@@ -11,7 +11,7 @@ upgrade_findings:
         - "app/"
         - "lib/"
       explanation: "Rails 4.1 removed the activerecord-deprecated_finders dependency. find_all_by_*, find_last_by_*, scoped_by_*, and find_by_* (including find_by_*!) no longer work"
-      fix: "Rewrite: find_all_by_* → where(col: value); find_last_by_* → where(col: value).last; scoped_by_* → where(col: value); find_by_<col> → find_by(col: value); find_by_<col>! → find_by!(col: value). As a short-term bridge, add gem 'activerecord-deprecated_finders'"
+      fix: "Rewrite: find_all_by_* → where(col: value); find_last_by_* → where(col: value).last; scoped_by_* → where(col: value); find_by_<col> → find_by(col: value); find_by_<col>! → find_by!(col: value). As a short-term bridge, add gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders' (without the require the gem is never loaded on 4.1, see DEPRECATED_FINDERS_AUTOREQUIRE)"
       variable_name: "DYNAMIC_FINDERS"
 
     - name: "Dynamic find_or_initialize_by_* / find_or_create_by_*"
@@ -121,6 +121,17 @@ upgrade_findings:
       explanation: "Rails 4.1 no longer depends on activerecord-deprecated_finders, the gem that kept :readonly working (with a deprecation warning) on 4.0. Without it, has_many (with or without :through), has_one and belongs_to raise `ArgumentError: Unknown key: :readonly` when the model class loads, so boot, eager loading and every test that touches the model fail. has_and_belongs_to_many does not raise: 4.1 rebuilds it as has_many :through and passes on only a fixed list of options, so :readonly is dropped with no warning, with or without the gem. The pattern only sees options on the same line as the macro"
       fix: "readonly: true becomes a scope lambda: has_many :tags, -> { readonly }, through: :taggings. readonly: false can usually just be deleted: Rails 4.1 removed implicit_readonly, so records loaded through a join are no longer marked readonly and there is nothing left to undo. If the association needs to stay writable on 4.0 too, use -> { readonly(false) } instead. The lambda form works on 4.0 and 4.1. As a short-term bridge, gem 'activerecord-deprecated_finders' restores :readonly on has_many / has_one / belongs_to; it does not help habtm"
       variable_name: "ASSOCIATION_READONLY"
+
+    - name: "activerecord-deprecated_finders in the Gemfile without an explicit require"
+      kind: breaking
+      pattern: "^\\s*gem\\s+[\"']activerecord-deprecated_finders[\"'](?![^\\n]*:?require(:|\\s*=>)\\s*[\"'])"
+      exclude: ""
+      search_paths:
+        - "Gemfile"
+        - "Gemfile.next"
+      explanation: "Rails 4.0 lists activerecord-deprecated_finders as a dependency and active_record.rb requires it, so on 4.0 it loads whether or not the Gemfile mentions it. Rails 4.1 drops both. Adding the gem back to the Gemfile as a bridge is not enough on its own: the gem's only entry file is `active_record/deprecated_finders.rb`, and Bundler.require tries `activerecord-deprecated_finders` and then `activerecord/deprecated_finders`, finds neither, and moves on without an error. The gem ends up in the bundle but never loaded, so everything it was meant to bridge still fails on 4.1: find_all_by_*, find_last_by_*, scoped_by_*, the dynamic find_or_create_by_* / find_or_initialize_by_* forms, find(:all / :first / :last), finder options on find / first / last / calculations, update_all with conditions, and the association :conditions / :order / :include / :uniq / :readonly options. The pattern flags a `gem 'activerecord-deprecated_finders'` line that has no `require:` string, and also `require: false`, which leaves it unloaded the same way"
+      fix: "If the call sites are not migrated yet, name the entry file: `gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders'`. It is harmless on 4.0, which loads the gem anyway, so the same line works on both sides of a dual boot. Better, once the call sites are migrated, remove the gem. `find_by_*` and `find_by_*!` are still in Rails 4.1 core and do not need it"
+      variable_name: "DEPRECATED_FINDERS_AUTOREQUIRE"
 
     - name: "JoinDependency::JoinAssociation internals (parent_table_name, join_to)"
       kind: breaking
@@ -433,7 +444,7 @@ dependencies:
   activerecord-deprecated_finders:
     check: false
     gem_name: "activerecord-deprecated_finders"
-    message: "Short-term bridge: restores find_all_by_*, find_last_by_*, scoped_by_*, and dynamic find_or_*_by_* finders removed from Rails 4.1. Also restores the old association finder options (:conditions, :order, :uniq, :readonly and the rest of that set) on has_many / has_one / belongs_to, with a deprecation warning. It does not restore them on has_and_belongs_to_many, which drops them silently at 4.1, and on Ruby 2.3+ it drops a Hash-valued :conditions. It also restores the find(:first, :conditions => ...) and two-argument update_all forms that old gem versions such as acts_as_list below 0.3.0 still call. It also restores the Array-returning Relation#all"
+    message: "Short-term bridge: restores find_all_by_*, find_last_by_*, scoped_by_*, dynamic find_or_*_by_* finders, finder options and update_all with conditions, removed from Rails 4.1. Also restores the old association finder options (:conditions, :order, :uniq, :readonly and the rest of that set) on has_many / has_one / belongs_to, with a deprecation warning. It does not restore them on has_and_belongs_to_many, which drops them silently at 4.1, and on Ruby 2.3+ it drops a Hash-valued :conditions. It also restores the find(:first, :conditions => ...) and two-argument update_all forms that old gem versions such as acts_as_list below 0.3.0 still call. It also restores the Array-returning Relation#all. Declare it with require: 'active_record/deprecated_finders'; a bare gem line is never loaded on 4.1"
     url: "https://github.com/rails/activerecord-deprecated_finders"
 
   spring:

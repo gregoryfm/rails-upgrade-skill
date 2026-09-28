@@ -229,6 +229,19 @@ RECORD_NOT_FOUND_MESSAGE:
     - "    raise ActiveRecord::RecordNotFound, \"Couldn't find Invoice with external_ref = #{id}\""
     - "    expect { Post.find(999) }.to raise_error(ActiveRecord::RecordNotFound)"
 
+DEPRECATED_FINDERS_AUTOREQUIRE:
+  match:
+    - "gem 'activerecord-deprecated_finders'"
+    - "gem \"activerecord-deprecated_finders\", \"~> 1.0.4\""
+    - "  gem 'activerecord-deprecated_finders', require: false"
+    - "  gem 'activerecord-deprecated_finders', :require => false"
+  no_match:
+    - "gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders'"
+    - "gem \"activerecord-deprecated_finders\", \"~> 1.0.4\", require: \"active_record/deprecated_finders\""
+    - "gem 'activerecord-deprecated_finders', :require => 'active_record/deprecated_finders'"
+    - "# gem 'activerecord-deprecated_finders'"
+    - "gem 'activerecord'"
+
 ASSOCIATION_CONDITIONS:
   match:
     - "  has_many :active_items, class_name: \"Item\", conditions: { active: true }"
