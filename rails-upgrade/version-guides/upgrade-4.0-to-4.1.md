@@ -914,6 +914,41 @@ The select and the `count` are often far apart: a scope or a method returns the 
 
 ---
 
+#### `RecordNotFound` Messages Quote the Primary Key
+
+**What Changed:**
+The message `ActiveRecord::RecordNotFound` carries now quotes the primary key column:
+
+| Call | Rails 4.0 | Rails 4.1 |
+|---|---|---|
+| `Post.find(999)` | `Couldn't find Post with id=999` | `Couldn't find Post with 'id'=999` |
+| `Post.find(1, 999)` | `Couldn't find all Posts with IDs (1, 999) (found 1 results, but was looking for 2)` | `Couldn't find all Posts with 'id': (1, 999) (found 1 results, but was looking for 2)` |
+
+Specs that assert the message text fail. If the app puts `e.message` into an API response, clients see the new wording after the upgrade.
+
+**Detection Pattern:**
+```ruby
+expect(json["error"]).to eq "Couldn't find Post with id=999"
+assert_equal "Couldn't find all Posts with IDs (1, 2)", error.message
+```
+
+**Fix:**
+```ruby
+# BEFORE
+expect(json["error"]).to eq "Couldn't find Post with id=999"
+
+# AFTER: assert what the app controls
+expect(response).to have_http_status(:not_found)
+expect { Post.find(999) }.to raise_error(ActiveRecord::RecordNotFound)
+
+# AFTER: if the text must stay under test, accept both forms while dual booting
+expect(json["error"]).to match(/Couldn't find Post with '?id'?=999/)
+```
+
+The single-id check needs `=` right after the column name, so app-written messages with spaces around `=` are not flagged. An app-written message in exactly the Rails shape is flagged but does not change; skip it.
+
+---
+
 ### 🟢 LOW PRIORITY
 
 #### Spring Preloader (New Default)
@@ -1191,6 +1226,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 26. Replace `.all` on relations and associations with `.to_a` (leave `Model.all` alone).
 27. Change `count` to `count(:all)` on relations that carry a multi-column `select`.
 28. Port association scopes that call `parent_table_name` and any `join_to` monkeypatch to the 4.1 `JoinDependency` API.
+29. Rewrite specs that assert the `RecordNotFound` message text (`with id=` became `with 'id'=`).
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1224,6 +1260,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `ActiveRecord::StatementInvalid` with `SELECT COUNT(title, version)` | "`count` on a Multi-Column `select` Builds Invalid SQL": call `count(:all)` |
 | `NoMethodError: undefined method 'parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation...>` | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": build the SQL without `parent_table_name` |
 | A join condition added by a `join_to` patch is missing from the SQL | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": port the patch to `join_constraints` |
+| Spec expects `Couldn't find Post with id=1` and gets `Couldn't find Post with 'id'=1` | "`RecordNotFound` Messages Quote the Primary Key": assert status and exception class, or match both forms |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |
