@@ -360,6 +360,49 @@ belongs_to :account, -> { readonly }
 
 ---
 
+#### `:confirm` Option on Link and Button Helpers Removed
+
+**What Changed:**
+Rails 4.0 deprecated `:confirm` on `link_to`, `button_to`, `submit_tag`, `image_submit_tag` and `f.submit`, and still converted it to a `data-confirm` attribute. Rails 4.1 removed that conversion. The option now passes through as an ordinary HTML attribute:
+
+```erb
+<%= link_to "Delete", post_path(@post), method: :delete, confirm: "Are you sure?" %>
+<%# Rails 4.0: <a data-confirm="Are you sure?" data-method="delete" ...> %>
+<%# Rails 4.1: <a confirm="Are you sure?" data-method="delete" ...>      %>
+```
+
+The UJS driver only looks at `data-confirm`, so the dialog stops appearing and the link or button acts on the first click. Nothing raises and nothing is logged, so tests that do not drive a real browser stay green while delete links lose their guard.
+
+**Detection Pattern:**
+```ruby
+# views, helpers and presenters under app/ and lib/
+link_to "Delete", path, confirm: "Are you sure?"
+button_to "Destroy", record, :confirm => "Really?"
+submit_tag "Save", confirm: "Save changes?"
+f.submit "Publish", confirm: "Publish now?"
+
+# also on a continuation line of a multi-line call
+link_to(t("posts.delete"),
+        post_path(post),
+        confirm: t("posts.confirm_delete"),
+        method: :delete)
+```
+
+**Fix:**
+```ruby
+# BEFORE
+link_to "Delete", post_path(@post), method: :delete, confirm: "Are you sure?"
+button_to "Destroy", @post, :confirm => "Really?"
+
+# AFTER
+link_to "Delete", post_path(@post), method: :delete, data: { confirm: "Are you sure?" }
+button_to "Destroy", @post, :data => { :confirm => "Really?" }
+```
+
+The `data:` form renders the same `data-confirm` attribute on 4.0 and 4.1, so the rewrite needs no `NextRails.next?` branch and can ship before the bump. If the call already passes a `data:` hash, add `confirm:` to it.
+
+---
+
 ### 🟡 MEDIUM PRIORITY
 
 #### MultiJSON Removed from Rails
@@ -837,6 +880,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 16. Move association `:order` into scope lambdas, including every `has_one` and `has_and_belongs_to_many` (4.1 ignores the option there without an error).
 17. Replace association `uniq: true` with `-> { distinct }`, including every `has_and_belongs_to_many` (4.1 drops the option there without an error).
 18. Replace association `readonly: true` with `-> { readonly }` and delete redundant `readonly: false`, including on `has_and_belongs_to_many` (4.1 drops the option there without an error).
+19. Move `:confirm` on `link_to` / `button_to` / `submit_tag` / `f.submit` under `data: { confirm: ... }`.
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -863,6 +907,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `I18n::InvalidLocale` on a request that worked on 4.0 | "I18n Enforces Available Locales" — add the locale to `config.i18n.available_locales` |
 | `TypeError: CacheDigests is not a class` from every `rake` task | "`cache_digests` Gem Collides with Core Cache Digests" — `gem 'cache_digests' unless NextRails.next?`, move `CacheDigests::*` calls to `ActionView::Digestor` |
 | API clients fail to parse `2024-01-01T00:00:00.000Z` | "`as_json` Millisecond Precision for Time/DateTime/TWZ" — `ActiveSupport::JSON::Encoding.time_precision = 0` or update consumers |
+| Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed"; move it to `data: { confirm: ... }` |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |
