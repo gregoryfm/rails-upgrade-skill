@@ -1145,6 +1145,37 @@ class LabeledFormBuilder < ActionView::Helpers::FormBuilder
 
 ---
 
+#### `RouteSet#install_helpers` Removed
+
+**What Changed:**
+Rails 3.2's `RouteSet#install_helpers(destinations = [ActionController::Base, ActionView::Base])`
+mixed a route set's named-route helpers into other classes. Rails 4.0 removed it, so any
+call raises `NoMethodError: undefined method 'install_helpers'`, often in spec setup that
+builds its own `RouteSet`.
+
+**Detection Pattern:**
+```ruby
+Rails.application.routes.install_helpers(self)
+route_set.install_helpers
+```
+
+**Fix:**
+```ruby
+# BEFORE
+Rails.application.routes.install_helpers(self)
+
+# AFTER: works on 3.2 and 4.0
+include Rails.application.routes.url_helpers
+
+# BEFORE (spec with its own route set)
+route_set.install_helpers
+
+# AFTER
+ActionView::Base.send(:include, route_set.url_helpers)
+```
+
+---
+
 #### Bidirectional `dependent: :destroy` Now Recurses Forever
 
 **What Changed:**
@@ -1729,6 +1760,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `DEPRECATION WARNING: Model.scoped is deprecated. Please use Model.all instead.` | "`Model.scoped` Deprecated": use `where(nil)` before the bump, `all` after |
 | `DEPRECATION WARNING: Relation#update_all with conditions is deprecated.` or `Relation#update_all with :limit / :order options is deprecated.` | "`update_all` With Conditions Deprecated": move the conditions into `where` |
 | `NoMethodError: undefined method 'rescue_action'` | "`rescue_action` Removed — Use `rescue_from`" |
+| `NoMethodError: undefined method 'install_helpers'` | "`RouteSet#install_helpers` Removed": include `url_helpers` instead |
 | `undefined local variable or method` in partial | "Partial Magic Variables Removed" — pass `locals:` |
 | Cache misses after upgrade | "`cache_key` Timestamp Format Changed" — changed to `:nsec` |
 | `invalid date` in fixtures | "Fixture Dates Must Be Cast to Strings" — cast with `.to_s(:db)` |
