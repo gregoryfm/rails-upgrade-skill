@@ -651,6 +651,52 @@ submit path changes again.
 
 ---
 
+#### terser Fails to Load on Sprockets 2.x
+
+**What Changed:**
+Rails 4.0 runs on `sprockets-rails` 2.0, which pins Sprockets to 2.x. terser's
+`Terser::Compressor` requires `sprockets/digest_utils`, which only exists from Sprockets
+3.0. The bundle resolves, because terser does not declare a sprockets dependency, but
+terser's railtie registers the compressor in a `config.assets.configure` block that
+sprockets-rails 2.0 runs at boot, and the app dies with:
+
+```
+LoadError: cannot load such file -- sprockets/digest_utils
+```
+
+On 3.2, `config.assets.configure` is only an unset option, so the block never runs and
+the current side boots. `uglifier` and `closure-compiler` do not load that file.
+
+**Detection Pattern:**
+```ruby
+# Gemfile
+gem "terser"
+```
+
+**Fix:**
+```ruby
+# BEFORE
+group :assets do
+  gem "terser"
+end
+
+# AFTER
+group :assets do
+  if next?
+    gem "uglifier", ">= 1.3.0"   # only so :uglifier resolves in env configs
+    gem "terser", require: false
+  else
+    gem "terser"
+  end
+end
+```
+
+`require: false` alone stops the boot failure. To keep compiling with terser on the next
+side, register it at compile time with a rake task: the full recipe is in
+`references/js-compressor-sprockets-mismatch-reference.md`.
+
+---
+
 #### `order` and `reorder` Require Arguments
 
 **What Changed:**
@@ -1649,6 +1695,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | A scoped route 404s and `rake routes` shows an extra segment | "A Symbol Passed to Route `scope` Becomes a Path Segment" — drop the Symbol, keep `path:` |
 | `ArgumentError: The provided regular expression is using multiline anchors (^ or $)` | "Format Validators Reject Multiline Anchors": use `\A` and `\z` |
 | Remote form POST arrives with no session or current user | "Remote Forms Stop Embedding the CSRF Token" — pin `embed_authenticity_token_in_remote_forms` |
+| `LoadError: cannot load such file -- sprockets/digest_utils` at boot | "terser Fails to Load on Sprockets 2.x": `require: false` on the next side |
 | `ArgumentError: The method .order() must contain arguments.` | "`order` and `reorder` Require Arguments" — name the column, `order(:id)` for `.order.last` |
 | `ArgumentError: Direction should be :asc or :desc` | "`order` and `reorder` Require Arguments" — hash values must be `:asc` / `:desc`; use strings across joins |
 | `DEPRECATION WARNING: This dynamic method is deprecated. Please use e.g. Post.where(...).all instead.` (the suggestion is `Post.where(...).last`, `Post.find_or_create_by(name: 'foo')` or `Post.find_or_initialize_by(name: 'foo')` for the other finders) | "Dynamic Finders Deprecated": rewrite with `where`, raises on 4.1 |
