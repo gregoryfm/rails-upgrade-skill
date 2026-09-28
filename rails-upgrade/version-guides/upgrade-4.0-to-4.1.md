@@ -599,6 +599,48 @@ The scope is added to the normal foreign-key condition, while `:finder_sql` repl
 
 ---
 
+#### `JoinDependency` Internals Changed (`parent_table_name`, `join_to`)
+
+**What Changed:**
+Rails 4.1 rewrote `ActiveRecord::Associations::JoinDependency`. `JoinAssociation` no longer keeps a parent, so `parent_table_name` (4.0 delegated it to the parent) is gone, and `join_to(manager)` became `join_constraints(foreign_table, foreign_klass, node, join_type, tables, scope_chain, chain)`. The class is `:nodoc:`, but two kinds of app code reach into it:
+
+- **An association scope that takes an argument.** When the association is used in `joins`, Rails passes the `JoinAssociation` to the scope. A scope that builds SQL from `parent_table_name` raises on 4.1:
+  ```
+  NoMethodError: undefined method `parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation:0x...>
+  ```
+- **A monkeypatch on `join_to`.** `alias_method_chain :join_to, ...` raises `NameError` at load. A module prepended to override `join_to` loads fine and is never called, so whatever SQL it added silently disappears from every join.
+
+**Detection Pattern:**
+```ruby
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{join.parent_table_name}.active = 1")
+}, class_name: "Post"
+
+module SoftDeleteJoin
+  def join_to(manager) ... end
+end
+ActiveRecord::Associations::JoinDependency::JoinAssociation.send(:prepend, SoftDeleteJoin)
+```
+
+**Fix:**
+```ruby
+# BEFORE
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{join.parent_table_name}.active = 1")
+}, class_name: "Post"
+
+# AFTER: aliased_table_name still exists on 4.1; name the parent table directly
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{Author.quoted_table_name}.active = 1")
+}, class_name: "Post"
+```
+
+Naming the parent table directly only works when that table is not aliased in the query. If it can be (self-joins, the same association joined twice), move the condition into a scope applied where the query is built.
+
+For a `join_to` patch, write a `join_constraints` version for 4.1 and pick between the two with `NextRails.next?`. Then compare `to_sql` for the affected joins on both bundles: a patch that silently stops running changes queries without necessarily failing a test.
+
+---
+
 ### 🟡 MEDIUM PRIORITY
 
 #### MultiJSON Removed from Rails
@@ -1148,6 +1190,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 25. Replace `:finder_sql` / `:counter_sql` association options with a scope or a `find_by_sql` method.
 26. Replace `.all` on relations and associations with `.to_a` (leave `Model.all` alone).
 27. Change `count` to `count(:all)` on relations that carry a multi-column `select`.
+28. Port association scopes that call `parent_table_name` and any `join_to` monkeypatch to the 4.1 `JoinDependency` API.
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1179,6 +1222,8 @@ Error → section lookup for the most common errors encountered during this upgr
 | `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
 | `NoMethodError: undefined method 'sort!' for #<Post::ActiveRecord_Relation...>` on a `.all` result | "`Relation#all` Returns a Relation, Not an Array": replace `rel.all` with `rel.to_a` |
 | `ActiveRecord::StatementInvalid` with `SELECT COUNT(title, version)` | "`count` on a Multi-Column `select` Builds Invalid SQL": call `count(:all)` |
+| `NoMethodError: undefined method 'parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation...>` | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": build the SQL without `parent_table_name` |
+| A join condition added by a `join_to` patch is missing from the SQL | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": port the patch to `join_constraints` |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |
