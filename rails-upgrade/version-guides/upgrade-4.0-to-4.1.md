@@ -809,6 +809,37 @@ Or update consumers to accept fractional seconds.
 
 ---
 
+#### `Relation#all` Returns a Relation, Not an Array
+
+**What Changed:**
+On 4.0, `Relation#all` comes from the bundled `activerecord-deprecated_finders` gem: calling it on a relation or an association emits a deprecation warning and returns an `Array`. Rails 4.1 drops that gem, so the same call falls through to the model's class-level `all` and returns a `Relation`. Iteration keeps working. Code that treats the result as an `Array` does not: `sort!`, `pop`, `shift` and the other bang mutators raise `NoMethodError`, and `is_a?(Array)` turns `false`. The finder-options form (`.all(conditions: ...)`) raises `ArgumentError` on 4.1.
+
+`Model.all` on a constant is the replacement, not the problem. It returns a `Relation` on both versions and does not warn.
+
+**Detection Pattern:**
+```ruby
+Post.where(published: true).all
+@post.comments.all
+User.active.all.sort_by!(&:name)
+```
+
+**Fix:**
+```ruby
+# BEFORE
+posts = Post.where(published: true).all
+names = User.active.all.sort_by!(&:name)
+
+# AFTER
+posts = Post.where(published: true).to_a
+names = User.active.to_a.sort_by!(&:name)
+```
+
+Use `to_a`, not the `load` the deprecation message also suggests: `load` returns the `Relation`, so it changes the return type. Dropping `.all` entirely is fine where the caller only iterates, but keep `to_a` when the result is appended to with `<<`: on a `has_many` association of a saved record, `<<` saves the new record instead of adding to a local list.
+
+The pattern flags every `.all` called without arguments. Most hits are `Model.all`. Capybara's `page.all(...)` is skipped, but objects with their own `all` method still match. Check the receiver before rewriting. `gem 'activerecord-deprecated_finders'` restores the 4.0 behavior on 4.1 as a short-term bridge.
+
+---
+
 ### 🟢 LOW PRIORITY
 
 #### Spring Preloader (New Default)
@@ -1083,6 +1114,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 23. Pass a block to every `default_scope` that takes a relation or a hash (`default_scope { where(deleted_at: nil) }`).
 24. Rename any scope whose name matches an Active Record class method (`none`, `all`, `count`, ...), or delete it if the built-in does the same job.
 25. Replace `:finder_sql` / `:counter_sql` association options with a scope or a `find_by_sql` method.
+26. Replace `.all` on relations and associations with `.to_a` (leave `Model.all` alone).
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1112,6 +1144,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | API clients fail to parse `2024-01-01T00:00:00.000Z` | "`as_json` Millisecond Precision for Time/DateTime/TWZ" — `ActiveSupport::JSON::Encoding.time_precision = 0` or update consumers |
 | Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed": move it to `data: { confirm: ... }` |
 | `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
+| `NoMethodError: undefined method 'sort!' for #<Post::ActiveRecord_Relation...>` on a `.all` result | "`Relation#all` Returns a Relation, Not an Array": replace `rel.all` with `rel.to_a` |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |

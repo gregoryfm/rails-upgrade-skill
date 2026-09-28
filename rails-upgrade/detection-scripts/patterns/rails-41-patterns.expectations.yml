@@ -120,6 +120,25 @@ ACTS_AS_LIST_PRE_0_3:
     - "gem 'acts_as_list', '< 0.3.1'"
     - "      acts_as_list (>= 0.1)"
 
+RELATION_ALL:
+  # The pattern cannot tell a constant receiver from a relation, so
+  # `Post.all` also matches. That hit is the replacement, not the problem;
+  # triage each hit by its receiver.
+  match:
+    - "    Post.where(published: true).all.each do |post|"
+    - "  @comments = @post.comments.all"
+    - "    users = User.active.all"
+    - "    records = scope.order(:created_at).all.sort_by!(&:id)"
+    - "    Post.all"
+  no_match:
+    # Finder options: a separate change, and not the zero-argument call.
+    - "    Post.where(published: true).all(limit: 5)"
+    # Capybara's page.all takes a selector argument.
+    - "    expect(page.all('.row').size).to eq 3"
+    - "    return unless items.all? { |item| item.valid? }"
+    - "    Post.all_published"
+    - "    Post.where(published: true).to_a"
+
 ASSOCIATION_CONDITIONS:
   match:
     - "  has_many :active_items, class_name: \"Item\", conditions: { active: true }"
