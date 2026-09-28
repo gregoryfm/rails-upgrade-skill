@@ -494,6 +494,39 @@ The lambda form works on Rails 4.0 too, so this can land before the version bump
 
 ---
 
+#### `default_scope` Without a Block Raises
+
+**What Changed:**
+Rails 4.0 accepted `default_scope` with a relation or a hash argument and a deprecation warning. Rails 4.1 raises while the class body runs, so the model fails to load:
+
+```
+ArgumentError: Support for calling #default_scope without a block is removed.
+```
+
+`activerecord-deprecated_finders` keeps the hash form (`default_scope order: 'name'`) working with a warning. It does not rescue a relation argument. Overriding `def self.default_scope` as a class method is not affected.
+
+**Detection Pattern:**
+```ruby
+default_scope where(deleted_at: nil)
+default_scope order('created_at DESC')
+default_scope :order => 'name'
+```
+
+**Fix:**
+```ruby
+# BEFORE
+default_scope where(deleted_at: nil)
+default_scope :order => 'name'
+
+# AFTER
+default_scope { where(deleted_at: nil) }
+default_scope { order(:name) }
+```
+
+The block form works on Rails 4.0 too, so this can land before the version bump without a `NextRails.next?` branch.
+
+---
+
 ### 🟡 MEDIUM PRIORITY
 
 #### MultiJSON Removed from Rails
@@ -976,6 +1009,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 21. Upgrade `acts_as_list` below 0.3.0 (check the lockfile) to `~> 0.7.7`.
 
 22. Wrap every non-callable `scope` body in a lambda (`scope :active, -> { where(active: true) }`).
+23. Pass a block to every `default_scope` that takes a relation or a hash (`default_scope { where(deleted_at: nil) }`).
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1014,6 +1048,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `ArgumentError: Unknown key: :readonly` when a model loads | "Association `:readonly` Option Removed": use `-> { readonly }`, or delete `readonly: false` |
 
 | `NoMethodError: undefined method 'call'` when a scope runs | "Scopes With a Non-Callable Body Removed": wrap the body in `-> { ... }` |
+| `ArgumentError: Support for calling #default_scope without a block is removed` when a model loads | "`default_scope` Without a Block Raises": wrap the argument in a block |
 
 ---
 
