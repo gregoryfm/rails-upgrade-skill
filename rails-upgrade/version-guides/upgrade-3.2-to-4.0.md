@@ -557,6 +557,42 @@ is dropped without an error.
 
 ---
 
+#### Duplicate Route Names Raise, Including a Second `root`
+
+**What Changed:**
+Rails 3.2's `RouteSet#add_route` overwrote an existing entry in `named_routes`, so an app
+could declare `root` once per constraints block and boot. Rails 4.0 raises instead:
+
+```
+ArgumentError: Invalid route name, already in use: 'root'
+```
+
+Every `root` without `as:` registers `:root`, so the second one in the same route set stops
+boot. A `root` inside `namespace :admin` registers `admin_root` and does not collide, and an
+engine's routes are a separate route set.
+
+**Detection Pattern:**
+```ruby
+root to: "pages#home", constraints: WwwConstraint
+root to: "accounts#show", constraints: SubdomainConstraint
+```
+
+**Fix:**
+```ruby
+# BEFORE
+root to: "pages#home", constraints: WwwConstraint
+root to: "accounts#show", constraints: SubdomainConstraint
+
+# AFTER: keep the first as :root so root_path / root_url keep working
+root to: "pages#home", constraints: WwwConstraint
+root to: "accounts#show", constraints: SubdomainConstraint, as: :account_root
+```
+
+`as:` on `root` works on 3.2 too, so no `NextRails.next?` branch is needed. Requests to
+`/` still go to the first root whose constraints match.
+
+---
+
 #### Remote Forms Stop Embedding the CSRF Token
 
 **What Changed:**
@@ -1766,6 +1802,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `ArgumentError: Unknown key: extend` | "`belongs_to` / `has_one` `:extend` → `extending` inside lambda", under "Scopes and Association Options Require Lambda": move the module into `extending` |
 | `ArgumentError: wrong number of arguments (given 0, expected 1)` from `spawn_methods.rb` when an association loads or a model with a Hash `default_scope` is queried | "Deprecated Association Options Raise on Ruby 2.3+": rewrite to a scope lambda or add the two-patch initializer |
 | `No route matches` | "Routes Require HTTP Method" — add HTTP method |
+| `ArgumentError: Invalid route name, already in use: 'root'` | "Duplicate Route Names Raise, Including a Second `root`": add `as:` to the later roots |
 | A scoped route 404s and `rake routes` shows an extra segment | "A Symbol Passed to Route `scope` Becomes a Path Segment" — drop the Symbol, keep `path:` |
 | `ArgumentError: The provided regular expression is using multiline anchors (^ or $)` | "Format Validators Reject Multiline Anchors": use `\A` and `\z` |
 | Remote form POST arrives with no session or current user | "Remote Forms Stop Embedding the CSRF Token" — pin `embed_authenticity_token_in_remote_forms` |
