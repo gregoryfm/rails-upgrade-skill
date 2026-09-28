@@ -25,6 +25,17 @@ CACHE_DIGESTS_BACKPORT:
     - "  config.action_view.cache_template_loading = true"
     - "  <% cache [@post, 'v3'] do %>"
 
+MULTI_JSON:
+  match:
+    - "    MultiJson.dump(payload)"
+    - "  data = MultiJson.load(response.body, symbolize_keys: true)"
+    - "require 'multi_json'"
+    - "rescue MultiJson::ParseError => e"
+  no_match:
+    - "  payload.to_json"
+    - "  JSON.parse(response.body)"
+    - "  ActiveSupport::JSON.decode(str)"
+
 ASSOCIATION_CONDITIONS:
   match:
     - "  has_many :active_items, class_name: \"Item\", conditions: { active: true }"
