@@ -840,6 +840,38 @@ The pattern flags every `.all` called without arguments. Most hits are `Model.al
 
 ---
 
+#### `count` on a Multi-Column `select` Builds Invalid SQL
+
+**What Changed:**
+Rails 4.0 ignores a `select` list that contains a comma or `*` when it builds a count, so the count runs `COUNT(*)`. Rails 4.1 passes the select list straight into `COUNT`:
+
+```
+ActiveRecord::StatementInvalid: SQLite3::SQLException: wrong number of arguments to function COUNT(): SELECT COUNT(title, version) FROM "posts"
+```
+
+PostgreSQL (`function count(...) does not exist`) and MySQL (`ERROR 1064`, a syntax error) reject it too. It only breaks when something calls `count` with no argument on that relation. `size` is safe on 4.1, because it calls `count(:all)` when the relation is not loaded.
+
+**Detection Pattern:**
+```ruby
+Post.select("title, version").count
+Post.select(:title, :version).count
+Post.select([:title, :version]).count
+scope :summary, -> { select("id, title") }  # counted later: Post.summary.count
+```
+
+**Fix:**
+```ruby
+# BEFORE
+Post.select("title, version").count
+
+# AFTER
+Post.select("title, version").count(:all)
+```
+
+The select and the `count` are often far apart: a scope or a method returns the relation and a caller, or a spec, counts it. Trace every caller of each flagged relation.
+
+---
+
 ### 🟢 LOW PRIORITY
 
 #### Spring Preloader (New Default)
@@ -1115,6 +1147,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 24. Rename any scope whose name matches an Active Record class method (`none`, `all`, `count`, ...), or delete it if the built-in does the same job.
 25. Replace `:finder_sql` / `:counter_sql` association options with a scope or a `find_by_sql` method.
 26. Replace `.all` on relations and associations with `.to_a` (leave `Model.all` alone).
+27. Change `count` to `count(:all)` on relations that carry a multi-column `select`.
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1145,6 +1178,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed": move it to `data: { confirm: ... }` |
 | `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
 | `NoMethodError: undefined method 'sort!' for #<Post::ActiveRecord_Relation...>` on a `.all` result | "`Relation#all` Returns a Relation, Not an Array": replace `rel.all` with `rel.to_a` |
+| `ActiveRecord::StatementInvalid` with `SELECT COUNT(title, version)` | "`count` on a Multi-Column `select` Builds Invalid SQL": call `count(:all)` |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |
