@@ -461,6 +461,39 @@ Branch an `include AbstractController::ViewPaths` the same way, to `ActionView::
 
 ---
 
+#### Scopes With a Non-Callable Body Removed
+
+**What Changed:**
+Rails 4.0 accepted `scope :name, <relation>` with a deprecation warning. Rails 4.1 removes that support: `scope` still defines the method, but every call runs `body.call`, so the first use of the scope raises on the stored relation:
+
+```
+NoMethodError: undefined method `call'
+```
+
+The error appears when the scope runs, not when the model loads, so the app boots and only the code paths that use the scope fail. The hash form (`scope :active, conditions: { ... }`) fails the same way unless `activerecord-deprecated_finders` is in the bundle. That gem rescues only the hash form, not a relation body.
+
+**Detection Pattern:**
+```ruby
+scope :active, where(active: true)
+scope :recent, order('created_at DESC')
+scope :published, :conditions => { published: true }
+```
+
+**Fix:**
+```ruby
+# BEFORE
+scope :active, where(active: true)
+scope :published, :conditions => { published: true }
+
+# AFTER
+scope :active, -> { where(active: true) }
+scope :published, -> { where(published: true) }
+```
+
+The lambda form works on Rails 4.0 too, so this can land before the version bump without a `NextRails.next?` branch.
+
+---
+
 ### 🟡 MEDIUM PRIORITY
 
 #### MultiJSON Removed from Rails
@@ -942,6 +975,8 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 20. Switch `include AbstractController::Layouts` / `ViewPaths` to `ActionView::Layouts` / `ViewPaths` (branch on `NextRails.next?` while both versions boot).
 21. Upgrade `acts_as_list` below 0.3.0 (check the lockfile) to `~> 0.7.7`.
 
+22. Wrap every non-callable `scope` body in a lambda (`scope :active, -> { where(active: true) }`).
+
 ### Phase 6: Testing
 - Run full test suite.
 - Run `bin/rake -T` — it loads every rake task and catches constant collisions the suite and a boot smoke test both miss.
@@ -977,6 +1012,8 @@ Error → section lookup for the most common errors encountered during this upgr
 | `ArgumentError: Unknown key: :uniq` when a model loads | "Association `:uniq` Option Removed": use `-> { distinct }` |
 | `has_and_belongs_to_many` returns duplicate records | "Association `:uniq` Option Removed": 4.1 drops `:uniq` there without an error, use `-> { distinct }` |
 | `ArgumentError: Unknown key: :readonly` when a model loads | "Association `:readonly` Option Removed": use `-> { readonly }`, or delete `readonly: false` |
+
+| `NoMethodError: undefined method 'call'` when a scope runs | "Scopes With a Non-Callable Body Removed": wrap the body in `-> { ... }` |
 
 ---
 
