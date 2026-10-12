@@ -27,6 +27,9 @@ CACHE_DIGESTS_BACKPORT:
 
 MULTI_JSON:
   match:
+    # adapter setup and the decode alias also need the gem
+    - "  MultiJson.use(:oj)"
+    - "    data = MultiJson.decode(body)"
     - "    MultiJson.dump(payload)"
     - "  data = MultiJson.load(response.body, symbolize_keys: true)"
     - "require 'multi_json'"

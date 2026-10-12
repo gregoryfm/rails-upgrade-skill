@@ -365,7 +365,7 @@ belongs_to :account, -> { readonly }
 #### MultiJSON Removed from Rails
 
 **What Changed:**
-Rails 4.1 no longer depends on [`MultiJSON`](https://github.com/intridea/multi_json). The gem's constant is `MultiJson` (there is no `MultiJSON` constant). Apps that reference `MultiJson` directly will raise `NameError` once the transitive dependency goes away.
+Rails 4.1 no longer depends on the [`multi_json`](https://github.com/intridea/multi_json) gem. Its constant is `MultiJson` (there is no `MultiJSON` constant). Code that references `MultiJson` (calls, `rescue MultiJson::ParseError`, `MultiJson.use(:oj)` in an initializer, specs that parse response bodies) raises `NameError` once the transitive dependency goes away.
 
 **Detection Pattern:**
 ```ruby
@@ -376,25 +376,29 @@ MultiJson.load(str)
 
 **Fix:**
 ```ruby
-# Option A — keep multi_json explicitly
+# Option A: keep multi_json explicitly (needed if the app sets an adapter with MultiJson.use)
 # Gemfile
 gem 'multi_json'
 
-# Option B — migrate to core JSON
+# Option B: migrate to core JSON
 # BEFORE
 MultiJson.dump(obj)
 MultiJson.load(str)
 MultiJson.load(str, symbolize_keys: true)
+MultiJson.dump(obj, pretty: true)
+rescue MultiJson::ParseError => e
 
 # AFTER
 obj.to_json
 JSON.parse(str)
 JSON.parse(str, symbolize_names: true)
+JSON.pretty_generate(obj)
+rescue JSON::ParserError => e
 ```
 
-`JSON.parse` does not know `symbolize_keys:`. Passing it does nothing and the keys come back as strings, so rename the option to `symbolize_names:`.
+`JSON.parse` does not know `symbolize_keys:`. Passing it does nothing and the keys come back as strings, so rename the option to `symbolize_names:`. `decode` / `encode` are aliases of `load` / `dump` and map the same way. multi_json's json adapter passed `quirks_mode: true`, so on json 1.x a body that is a bare scalar (`42`, `null`) needs `JSON.parse(str, quirks_mode: true)`.
 
-**Do not** blindly substitute `JSON.dump` / `JSON.load` — those are the `JSON` gem's arbitrary-object (de)serializers and are unsafe on untrusted input.
+**Do not** blindly substitute `JSON.dump` / `JSON.load`: those are the `JSON` gem's arbitrary-object (de)serializers and are unsafe on untrusted input.
 
 ---
 
