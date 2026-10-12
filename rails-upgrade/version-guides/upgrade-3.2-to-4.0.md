@@ -125,7 +125,7 @@ default_scope where(deleted_at: nil)
 default_scope :order => 'created_at ASC'
 ```
 
-Any body that is not a lambda or proc counts, whatever relation method it starts with, with or without parentheses around the arguments. A proc in parentheses (`scope :by_month, (proc { |m| where(month: m) })`) is already callable and needs no change.
+Any body that is not a lambda or proc counts, whatever relation method it starts with, with or without parentheses around the arguments. The pattern skips a bare constant (`scope :active, ACTIVE_SCOPE`) and a `method(:name)` object, which Rails accepts when they respond to `call`. A proc in parentheses (`scope :by_month, (proc { |m| where(month: m) })`) is already callable and needs no change.
 
 **Fix:**
 ```ruby
@@ -486,12 +486,20 @@ before `is_a?(Hash)`, so the options hash the gem merges into the association sc
 as a proc with no argument. Rails 4.1.15 moved the Hash check first; 4.1.0 through 4.1.14
 keep the 4.0 order. The declaration itself
 loads with only the warning, so the app boots and the error appears in requests and specs.
+
+A Hash-valued `default_scope` (`default_scope :order => "created_at ASC"`) takes the same
+path: Rails 4.0 merges the Hash into every query of the model, so on Ruby 2.3 each query of
+that model raises the same `ArgumentError`. Rewrite it as `default_scope { order("created_at ASC") }`,
+which works on 3.2 too, or rely on the `merge!` patch below.
+
 On Ruby 2.2 or older none of this applies.
 
 **Detection Pattern:**
 ```bash
 # Ruby 2.3 or newer on the app
 cat .ruby-version; grep -n "^ruby" Gemfile
+# Hash-valued default_scope
+grep -rnE "default_scope[ (]*:?[a-z_]+(:|[[:space:]]*=>)" app/models/
 # associations still using a deprecated option
 grep -rnE "(has_many|has_one|belongs_to|has_and_belongs_to_many).*(conditions|order|include|readonly|uniq|select|limit)(:|\s*=>)" app/models/
 ```
@@ -527,7 +535,8 @@ if NextRails.next?
       def to_proc
         options = self.options
         proc do |owner|
-          if options[:where].is_a?(Proc)
+          # Same check as the gem, minus a Hash (which responds to to_proc on Ruby 2.3).
+          if options[:where].respond_to?(:to_proc) && !options[:where].is_a?(Hash)
             context = owner || self
             where(context.instance_eval(&options[:where])).merge!(options.except(:where))
           else
@@ -1523,10 +1532,9 @@ Error → section lookup for the most common errors encountered during this upgr
 | `DEPRECATION WARNING: Using #scope without passing a callable object`, or a scope ignores conditions chained before it | "Scopes", under "Scopes and Association Options Require Lambda" — add lambda |
 | `Unknown key: :conditions` | "Association `:conditions` hash → lambda with `where()`", under "Scopes and Association Options Require Lambda" — move to lambda |
 | `ArgumentError: Unknown key: extend` | "`belongs_to` / `has_one` `:extend` → `extending` inside lambda", under "Scopes and Association Options Require Lambda": move the module into `extending` |
-| `ArgumentError: wrong number of arguments (given 0, expected 1)` from `spawn_methods.rb` when an association loads | "Deprecated Association Options Raise on Ruby 2.3+": rewrite to a scope lambda or add the two-patch initializer |
+| `ArgumentError: wrong number of arguments (given 0, expected 1)` from `spawn_methods.rb` when an association loads or a model with a Hash `default_scope` is queried | "Deprecated Association Options Raise on Ruby 2.3+": rewrite to a scope lambda or add the two-patch initializer |
 | `No route matches` | "Routes Require HTTP Method" — add HTTP method |
 | A scoped route 404s and `rake routes` shows an extra segment | "A Symbol Passed to Route `scope` Becomes a Path Segment" — drop the Symbol, keep `path:` |
-
 | `ArgumentError: The provided regular expression is using multiline anchors (^ or $)` | "Format Validators Reject Multiline Anchors": use `\A` and `\z` |
 | Remote form POST arrives with no session or current user | "Remote Forms Stop Embedding the CSRF Token" — pin `embed_authenticity_token_in_remote_forms` |
 | `ArgumentError: The method .order() must contain arguments.` | "`order` and `reorder` Require Arguments" — name the column, `order(:id)` for `.order.last` |

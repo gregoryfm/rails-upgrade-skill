@@ -75,6 +75,10 @@ SCOPE_WITHOUT_LAMBDA:
     - "  scope(:active, -> { where(active: true) })"
     # commented-out scope
     - "  # scope :active, where(active: true)"
+    # a constant or a Method object that responds to call
+    - "  scope :active, ACTIVE_SCOPE"
+    - "  scope(:active, Filters::ACTIVE)"
+    - "  scope :search, Search.method(:call)"
 
 CLASS_SCOPED:
   # Model.scoped, relation.scoped and a receiverless `scoped` inside a model
@@ -177,6 +181,8 @@ ASSOCIATION_EXTEND:
     # a has_one that only mentions an extension in its class name
     - "  has_one :extended_profile, class_name: 'ProfileExtension'"
     - "  # belongs_to :account, extend: AccountLookup"
+    # extend: inside a trailing comment
+    - "  has_one :profile, class_name: 'Profile' # extend: ProfileMethods"
 
 ASSOCIATION_UNIQ:
   match:
@@ -379,6 +385,8 @@ CACHE_KEY_FORMAT:
     - "    update_column(:etag, cache_key)"
     - "    self.etag = cache_key"
     - "    Sync.push(key: cache_key)"
+    # a Rails.cache call on a line that also compares a stored key
+    - "    stale = Rails.cache.read(:etag) != record.cache_key"
   no_match:
     - "  def self.cache_key"
     # the app's own cache_key method taking an argument, or defining one
@@ -399,6 +407,8 @@ CACHE_KEY_FORMAT:
     # model_name.cache_key has no timestamp
     - "    \"#{self.class.model_name.cache_key}/#{id}\""
     - "  def display_name; name; end"
+    # a comment that mentions it
+    - "    # cache_key is used below"
 
 BUFFERED_LOGGER:
   match:
@@ -598,6 +608,9 @@ VALIDATES_FORMAT_OF_ANCHORS:
     - '  # validates_format_of :name, with: /^foo$/'
     # validates_with is a different API
     - '  validates_with SlugValidator, with: /^x/'
+    # with: given to a validator other than format never raises
+    - '  validates :phone, phone: { with: /^x$/ }'
+    - '  validates :zip, format: { with: /\A\d+\z/ }, phone: { with: /^x$/ }'
 
 VALIDATES_FORMAT_OF_ANCHORS_CONSTANT_BOUND:
   # Pattern: "Regexp\\.new\\(.*[\\^$]"
