@@ -633,12 +633,12 @@ The pattern also flags `.parent_table`, `.aliased_prefix` and `.join_dependency`
 
 **Fix:**
 ```ruby
-# BEFORE
+# BEFORE, in the Author model
 has_many :live_posts, ->(join) {
   where("#{join.aliased_table_name}.deleted_at IS NULL AND #{join.parent_table_name}.active = 1")
 }, class_name: "Post"
 
-# AFTER: aliased_table_name still exists on 4.1; name the parent table directly
+# AFTER: aliased_table_name still exists on 4.1; name the owner's table (Author here) directly
 has_many :live_posts, ->(join) {
   where("#{join.aliased_table_name}.deleted_at IS NULL AND #{Author.quoted_table_name}.active = 1")
 }, class_name: "Post"
@@ -920,7 +920,7 @@ Post.select("title, version").count
 Post.select("title, version").count(:all)
 ```
 
-On an association with a multi-column `select` in its scope, `owner.summaries.size` breaks the same way, so use `owner.summaries.count(:all)` there.
+On an association with a multi-column `select` in its scope, `owner.summaries.size` and `owner.summaries.many?` break the same way, so use `owner.summaries.count(:all)` there. `empty?` and `any?` are safe.
 
 The select and the `count` are often far apart: a scope or a method returns the relation and a caller, or a spec, counts it. Trace every caller of each flagged relation.
 
@@ -1269,6 +1269,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed": move it to `data: { confirm: ... }` |
 | `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
 | `NoMethodError: undefined method 'sort!' for #<Post::ActiveRecord_Relation...>` on a `.all` result | "`Relation#all` Returns a Relation, Not an Array": replace `rel.all` with `rel.to_a` |
+| `NoMethodError: undefined method 'sort!'` (or another bang Array method) on a relation with no `.all` | "`ActiveRecord::Relation` Mutator Methods Removed": call `to_a` first |
 | `ActiveRecord::StatementInvalid` with `SELECT COUNT(title, version)` or `SELECT COUNT(posts.*)` | "`count` on a Multi-Column `select` Builds Invalid SQL": call `count(:all)` |
 | `NoMethodError: undefined method 'parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation...>` | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": build the SQL without `parent_table_name` |
 | A join condition added by a `join_to` patch is missing from the SQL | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": port the patch to `join_constraints` |
