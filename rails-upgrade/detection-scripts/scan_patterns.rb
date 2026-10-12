@@ -60,6 +60,7 @@ require "yaml"
 require "json"
 require "optparse"
 require "fileutils"
+require_relative "hop"
 
 PATTERNS_DIR = File.expand_path("patterns", __dir__)
 PRIORITIES = %w[high_priority medium_priority low_priority].freeze
@@ -326,27 +327,6 @@ def available_versions
   end.compact.sort_by { |v| version_key(v) }
 end
 
-GUIDES_DIR = File.expand_path("../version-guides", __dir__)
-
-# The hop after `current` according to the version guides (6.0 -> 6.1), or
-# nil when no guide starts at `current`. The guides, not the patterns files,
-# define the hops: 6.1 has a guide and no patterns file.
-def guide_hop(current)
-  g = Dir[File.join(GUIDES_DIR, "upgrade-#{current}-to-*.md")].first
-  g ? File.basename(g)[/-to-(\d+\.\d+)\.md\z/, 1] : nil
-end
-
-# The version guide whose hop ends at `target`, or nil.
-def guide_for(target)
-  Dir[File.join(GUIDES_DIR, "upgrade-*-to-#{target}.md")].first
-end
-
-# The version a hop to `target` starts from (7.0 -> "6.1"), or nil.
-def guide_from(target)
-  g = guide_for(target)
-  g ? File.basename(g)[/\Aupgrade-(\d+\.\d+)-to-/, 1] : nil
-end
-
 # [[heading, first_line, last_line]] for every "## " and "#### " heading, so a
 # reader can open one entry by line range instead of loading the whole guide.
 def guide_index(path)
@@ -410,7 +390,7 @@ end
 
 # Adds :guide_entry ({ :file, :heading, :first, :last } or nil) to each result.
 def attach_guide_entries(results, target)
-  guide = guide_for(target)
+  guide = Hop.guide_for(target)
   markers = guide_markers(guide)
   results.each do |r|
     m = markers[r[:variable]]
@@ -429,7 +409,7 @@ def render_explain(patterns_path, target, vars)
   unknown = vars - entries.keys
   abort("scan_patterns: --explain names no pattern in #{File.basename(patterns_path)}: #{unknown.join(', ')}") unless unknown.empty?
   out = []
-  guide = guide_for(target)
+  guide = Hop.guide_for(target)
   markers = guide_markers(guide)
   vars.each do |v|
     pr, e = entries[v]
@@ -464,18 +444,6 @@ end
 
 def patterns_file_for(version)
   File.join(PATTERNS_DIR, "rails-#{version.delete('.')}-patterns.yml")
-end
-
-def lock_rails_version(lockfile)
-  return nil unless File.file?(lockfile)
-  File.read(lockfile)[/^    rails \((\d+\.\d+)[^)]*\)/, 1]
-end
-
-def normalize_target(t)
-  t = t.to_s.strip
-  t = "#{t[0..-2]}.#{t[-1]}" if t =~ /\A\d{2,3}\z/
-  t = t[/\A\d+\.\d+/] || t
-  t
 end
 
 # ---------------------------------------------------------------------------
@@ -731,14 +699,18 @@ def self_test
     check.call("a path-only site is not counted as a file", site_files(s.scan("pattern" => "", "exclude" => "", "search_paths" => ["vendor/plugins/"])).empty?)
     r = s.scan("pattern" => "\\.count\\([^)]*conditions:", "exclude" => "", "search_paths" => ["app/badbyte.rb"])
     check.call("invalid byte keeps the file's hits", r[:hits].length == 2)
-    check.call("reads the hop from Gemfile.lock", lock_rails_version(File.join(dir, "Gemfile.lock")) == "4.0")
+    check.call("reads the hop from Gemfile.lock",
+               Hop.resolve(File.read(File.join(dir, "Gemfile.lock")), nil)[:from] == "4.0")
   end
-  check.call("the 6.0 hop is 6.1 per the guides, not the next patterns file", guide_hop("6.0") == "6.1")
-  check.call("no guide starts at 3.1, so there is no hop to fall back to", guide_hop("3.1").nil?)
-  check.call("the hop to 7.0 starts at 6.1", guide_from("7.0") == "6.1")
+  railties = "    railties (6.0.6)\n"
+  check.call("the 6.0 hop is 6.1 per the guides, read from railties",
+             Hop.resolve(railties, nil).values_at(:to, :source) == ["6.1", "Gemfile.lock pins railties 6.0.6"])
+  check.call("--target 7.0 starts where its guide does", Hop.resolve(railties, "7.0")[:from] == "6.1")
+  check.call("refuses a bad or unknown --target", ["v6", "9.9"].all? { |t| Hop.resolve(railties, t)[:error] })
+  check.call("flags a --target the lockfile already reached", Hop.resolve(railties, "6.0")[:reached] && !Hop.resolve(railties, "6.1")[:reached])
   # Every shipped guide indexes to well-formed ranges, and a `# BEFORE` comment
   # inside a code fence is not taken for a heading.
-  Dir[File.join(GUIDES_DIR, "upgrade-*.md")].each do |g|
+  Dir[File.join(Hop::GUIDES_DIR, "upgrade-*.md")].each do |g|
     idx = guide_index(g)
     check.call("#{File.basename(g)}: every index range starts before it ends", idx.all? { |_, a, b| a <= b })
     check.call("#{File.basename(g)}: no code-fence line indexed", idx.none? { |h, _, _| h =~ /\A(BEFORE|AFTER)\b/ })
@@ -748,22 +720,21 @@ def self_test
              ex.include?("`DEFAULT_SCOPE`") && ex.include?("upgrade-4.0-to-4.1.md") && ex =~ /^- \d+-\d+: `default_scope` Chains/)
   # A guide with **Pattern:** markers (7.2) links each pattern to its entry;
   # a guide without them (4.1) links nothing and --explain keeps the index.
-  m72 = guide_markers(guide_for("7.2"))
+  m72 = guide_markers(Hop.guide_for("7.2"))
   rv = m72["RUBY_VERSION"]
   check.call("reads the 7.2 markers (got #{rv.inspect})",
              rv && rv[:heading] == "Ruby Version Requirement" && rv[:first] < rv[:last])
-  check.call("a guide without markers links nothing", guide_markers(guide_for("4.1")).empty?)
+  check.call("a guide without markers links nothing", guide_markers(Hop.guide_for("4.1")).empty?)
   check.call("a none marker names no pattern", !m72.values.any? { |x| x[:heading] =~ /alias_attribute/ })
   mc = m72["MIGRATION_CHECK_PENDING_REMOVED"]
   check.call("an entry ends before the next priority heading (got #{mc.inspect})",
-             mc && guide_entry_text(guide_for("7.2"), mc) !~ /PRIORITY/)
+             mc && guide_entry_text(Hop.guide_for("7.2"), mc) !~ /PRIORITY/)
   ex72 = render_explain(patterns_file_for("7.2"), "7.2", ["RUBY_VERSION"])
   check.call("--explain prints the marked guide entry, not the index",
              ex72.include?("### Guide entry:") && ex72.include?("required_ruby_version") && ex72 !~ /^## Guide entries in/)
   r72 = attach_guide_entries([{ :variable => "RUBY_VERSION" }, { :variable => "NOT_A_PATTERN" }], "7.2")
   check.call("attaches the guide entry to a result",
              r72[0][:guide_entry] && r72[0][:guide_entry][:file] == "version-guides/upgrade-7.1-to-7.2.md" && r72[1][:guide_entry].nil?)
-  check.call("normalizes 41 and 4.1.2", normalize_target("41") == "4.1" && normalize_target("4.1.2") == "4.1")
 
   # Every shipped patterns file must load and scan without raising.
   Dir.mktmpdir do |dir|
@@ -815,7 +786,9 @@ if $PROGRAM_NAME == __FILE__
 
   root = File.expand_path(opts[:root])
   abort("scan_patterns: --root #{opts[:root].inspect} is not a directory") unless File.directory?(root)
-  current = lock_rails_version(File.join(root, "Gemfile.lock"))
+  lockfile = File.join(root, "Gemfile.lock")
+  lock_text = File.file?(lockfile) ? File.read(lockfile, :encoding => "UTF-8") : nil
+  hop = nil
 
   if opts[:patterns]
     patterns = File.expand_path(opts[:patterns])
@@ -823,21 +796,13 @@ if $PROGRAM_NAME == __FILE__
     target = YAML.load_file(patterns)["version"].to_s
     hop_source = "--patterns"
   else
-    if opts[:target]
-      target = normalize_target(opts[:target])
-      hop_source = "--target"
-    else
-      abort("scan_patterns: no Gemfile.lock with rails in #{root}; pass --target X.Y") unless current
-      target = guide_hop(current)
-      unless target
-        abort("scan_patterns: no version guide starts at Rails #{current}, so the next hop is unknown. " \
-              "Pass --target X.Y to scan a hop on purpose. Available patterns: #{available_versions.join(', ')}")
-      end
-      unless File.file?(patterns_file_for(target))
-        abort("scan_patterns: the next hop is Rails #{current} -> #{target}, which has no patterns file. " \
-              "Detect it from the version guide by hand, or pass --target X.Y to scan another hop on purpose.")
-      end
-      hop_source = "Gemfile.lock pins rails #{current}; next hop is #{target}"
+    hop = Hop.resolve(lock_text, opts[:target])
+    abort("scan_patterns: #{hop[:error]}. Available patterns: #{available_versions.join(', ')}") if hop[:error]
+    target = hop[:to]
+    hop_source = hop[:source]
+    if !opts[:target] && !File.file?(patterns_file_for(target))
+      abort("scan_patterns: the next hop is Rails #{hop[:from]} -> #{target}, which has no patterns file. " \
+            "Detect it from the version guide by hand, or pass --target X.Y to scan another hop on purpose.")
     end
     patterns = patterns_file_for(target)
     unless File.file?(patterns)
@@ -860,10 +825,9 @@ if $PROGRAM_NAME == __FILE__
     end
   end
   # The hop's start comes from the guide that ends at the target, so --target
-  # 7.0 on a 4.0 app reads 6.1 -> 7.0, not 4.0 -> 7.0. Gemfile.lock is the
-  # fallback when no guide ends there.
+  # 7.0 on a 4.0 app reads 6.1 -> 7.0, not 4.0 -> 7.0.
   meta = {
-    :from => guide_from(target) || current, :to => target, :root => root, :hop_source => hop_source, :modular_roots => roots,
+    :from => hop ? hop[:from] : (Hop.from_for(target) || "?"), :to => target, :root => root, :hop_source => hop_source, :modular_roots => roots,
     :patterns_rel => patterns.sub(%r{\A.*/(detection-scripts/)}, '\1')
   }
   text = opts[:format] == "json" ? render_json(meta, results) : render_markdown(meta, results, opts)

@@ -40,3 +40,4 @@ jobs:
       - run: ruby bin/test-patterns --self-test
       - run: ruby bin/lint-skill
       - run: ruby rails-upgrade/detection-scripts/scan_patterns.rb --self-test
+      - run: ruby rails-upgrade/detection-scripts/gem_limits.rb --self-test

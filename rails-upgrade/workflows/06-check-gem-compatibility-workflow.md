@@ -7,7 +7,7 @@
 ## Inputs
 
 - `Gemfile.lock`
-- `next_rails` installed in the project
+- `next_rails` installed in the project (not needed for the first pass)
 - Target Rails version
 
 ## Outputs
@@ -24,6 +24,12 @@
 - [ ] Run `bundle outdated`
 - [ ] Check gem compatibility with target Rails version
 - [ ] Identify gems that need upgrading first
+
+---
+
+## First pass: declared limits in the lockfile
+
+Run `ruby <skill>/detection-scripts/gem_limits.rb --target <target>`. It reads only the lockfile (no network, no next_rails) and lists the locked gems whose gemspec excludes the target. Each one lands in required bumps or blockers; the check below says which, and the version to bump to.
 
 ---
 

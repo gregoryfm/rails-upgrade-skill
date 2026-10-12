@@ -8,6 +8,7 @@
 | **Multi-Hop Request** | "Help me upgrade from Rails 5.2 to 8.1" |
 | **Breaking Changes Analysis Only** | "What breaking changes affect my app for Rails 8.0?" |
 | **Reports Only** | "Upgrade my app to 7.1 but stop once you have presented both reports, I will implement myself" |
+| **Next-Hop Readiness** | "What do I need to do to get to the next Rails version?" |
 
 | Workflow | Full Upgrade | Multi-Hop | Analysis Only | Reports Only |
 |----------|--------------|-----------|---------------|--------------|
@@ -27,3 +28,5 @@
 | 13 Mention cleanup | run | run, after the last hop | skip | skip |
 
 Analysis Only intentionally skips Workflow 04 (Dual-Boot setup) and Workflow 03 (Validate Upgrade Path) because the user is not yet committing to an upgrade. Reports Only is a Full Upgrade that stops after Workflow 09: the user wants both deliverables and will do the implementation, CI sync and load_defaults work themselves.
+
+Next-Hop Readiness is not in the table: it uses only the patch check of Workflow 00 and two scripts. It is a quick read-only answer for the next hop only, with no test suite, no next_rails setup and no report. Follow `references/next-hop-readiness-reference.md`.

@@ -25,6 +25,8 @@ This file captures project-specific conventions Claude should follow when workin
   - Each finding carries `guide_entry` (file, heading, line range), derived from the guide's `**Pattern:**` markers, and `--explain VAR` prints that entry's text. Both are empty for a guide without markers
   - Prove Ruby 2.1 compatibility by running it, not by reading it: `docker run --rm -v "$PWD":/w -w /w ruby:2.1 ruby rails-upgrade/detection-scripts/scan_patterns.rb --self-test`. The image's locale is US-ASCII, as on many legacy app boxes, so read any UTF-8 file (the guides have emoji) with an explicit `:encoding => "UTF-8"`
 
+- `rails-upgrade/detection-scripts/gem_limits.rb` lists the locked gems whose gemspec excludes the target Rails, from the lockfile alone. Same constraints and Ruby 2.1 check as `scan_patterns.rb`; `--self-test` runs in CI. Both scripts take the hop from `Hop.resolve` in `rails-upgrade/detection-scripts/hop.rb`: change the hop logic there.
+
 ## Workflows and references (`rails-upgrade/workflows/`, `rails-upgrade/references/`)
 
 The skill body follows the progressive-disclosure practice from the skill-creator skill and the [Agent Skills specification](https://agentskills.io/specification): `SKILL.md` is the short entry point, procedures live in `workflows/`, on-demand material lives in `references/`. Two kinds of file, named so a search hit shows which kind it is:

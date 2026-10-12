@@ -1,6 +1,6 @@
 ---
 name: rails-upgrade
-description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, or querying version-specific changes. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
+description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, querying version-specific changes, or answering what stands between the app and the next Rails version. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
 ---
 
 # Rails Upgrade Assistant Skill
@@ -104,6 +104,7 @@ When proposing code fixes that must work with both the current and target Rails 
 ### Reference Materials
 - `references/sequential-strategy-reference.md` - Sequential upgrade rule (no version skipping) and the supported upgrade paths tables. Load in Workflow 03.
 - `references/request-patterns-reference.md` - Which workflows run for each request shape (full upgrade, multi-hop, analysis only, reports only). Read at the start of a session.
+- `references/next-hop-readiness-reference.md` - Read-only answer to "what do I need for the next Rails version?". Load for the Next-Hop Readiness request shape.
 - `references/no-test-suite-smoke-reference.md` - **Load from Workflow 01 when no runnable RSpec/Minitest suite exists** - Rails boot, routes, migration-status, and build smoke baseline with partial-confidence reporting
 - `references/deprecation-warnings-reference.md` - Finding and fixing deprecations
 - `references/staying-current-reference.md` - Keeping up with Rails releases
@@ -116,6 +117,7 @@ When proposing code fixes that must work with both the current and target Rails 
 ### Detection Pattern Resources
 - `detection-scripts/patterns/rails-*.yml` - Version-specific patterns for direct detection
 - `detection-scripts/scan_patterns.rb` - Runs every pattern for a hop against the app and prints a findings table. Run it in Workflow 05 instead of one Grep per pattern.
+- `detection-scripts/gem_limits.rb` - Lists the locked gems whose gemspec excludes the target Rails, from the lockfile alone. First pass of Workflow 06.
 
 ### Report Templates
 - `templates/upgrade-report-template.md` - Main upgrade report structure
