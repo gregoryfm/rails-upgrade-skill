@@ -3,15 +3,15 @@ description: "Breaking change patterns for Rails 4.0 → 4.1 upgrade"
 
 upgrade_findings:
   high_priority:
-    - name: "Dynamic finders (find_all_by / find_last_by / scoped_by / find_by)"
+    - name: "Dynamic finders (find_all_by / find_last_by / scoped_by)"
       kind: breaking
-      pattern: "\\.(find_all_by_|find_last_by_|scoped_by_|find_by_)[a-zA-Z_0-9]+!?"
-      exclude: "\\.find_by\\s*\\("
+      pattern: "(?<![\\w:\"'#])(?<!def )(?<!def self\\.)(find_all_by_|find_last_by_|scoped_by_)\\w+"
+      exclude: ""
       search_paths:
         - "app/"
         - "lib/"
-      explanation: "Rails 4.1 removed the activerecord-deprecated_finders dependency. find_all_by_*, find_last_by_*, scoped_by_*, and find_by_* (including find_by_*!) no longer work"
-      fix: "Rewrite: find_all_by_* → where(col: value); find_last_by_* → where(col: value).last; scoped_by_* → where(col: value); find_by_<col> → find_by(col: value); find_by_<col>! → find_by!(col: value). As a short-term bridge, add gem 'activerecord-deprecated_finders'"
+      explanation: "Rails 4.1 removed the activerecord-deprecated_finders dependency, which is where find_all_by_*, find_last_by_* and scoped_by_* were defined, so they raise NoMethodError. Calls with or without a receiver are flagged; `def self.find_all_by_*` (the app's own method) is not. find_by_* and find_by_*! are not flagged: Rails 4.1 core still defines them (ActiveRecord::DynamicMatchers::FindBy and FindByBang). The dynamic find_or_create_by_* / find_or_initialize_by_* forms are FIND_OR_X_BY_DYNAMIC"
+      fix: "Rewrite: find_all_by_* → where(col: value); find_last_by_* → where(col: value).last; scoped_by_* → where(col: value). Leave find_by_* and find_by_*! alone, they still work on 4.1. As a short-term bridge, add gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders' (a bare gem line is not loaded on 4.1 unless the app requires active_record/deprecated_finders itself, see DEPRECATED_FINDERS_AUTOREQUIRE)"
       variable_name: "DYNAMIC_FINDERS"
 
     - name: "Dynamic find_or_initialize_by_* / find_or_create_by_*"
@@ -121,6 +121,55 @@ upgrade_findings:
       explanation: "Rails 4.1 no longer depends on activerecord-deprecated_finders, the gem that kept :readonly working (with a deprecation warning) on 4.0. Without it, has_many (with or without :through), has_one and belongs_to raise `ArgumentError: Unknown key: :readonly` when the model class loads, so boot, eager loading and every test that touches the model fail. has_and_belongs_to_many does not raise: 4.1 rebuilds it as has_many :through and passes on only a fixed list of options, so :readonly is dropped with no warning, with or without the gem. The pattern only sees options on the same line as the macro"
       fix: "readonly: true becomes a scope lambda: has_many :tags, -> { readonly }, through: :taggings. readonly: false can usually just be deleted: Rails 4.1 removed implicit_readonly, so records loaded through a join are no longer marked readonly and there is nothing left to undo. If the association needs to stay writable on 4.0 too, use -> { readonly(false) } instead. The lambda form works on 4.0 and 4.1. As a short-term bridge, gem 'activerecord-deprecated_finders' restores :readonly on has_many / has_one / belongs_to; it does not help habtm"
       variable_name: "ASSOCIATION_READONLY"
+
+    - name: "activerecord-deprecated_finders in the Gemfile without an explicit require"
+      kind: breaking
+      pattern: "^\\s*gem\\s+[\"']activerecord-deprecated_finders[\"'](?!(?:[^#\\n]|#(?!\\s)|,[ \\t]*\\n)*?:?require(:|\\s*=>)\\s*[\"']active_record/deprecated_finders[\"'])"
+      exclude: ""
+      search_paths:
+        - "Gemfile"
+      explanation: "Rails 4.0 lists activerecord-deprecated_finders as a dependency and active_record.rb requires it, so on 4.0 it loads whether or not the Gemfile mentions it. Rails 4.1 drops both. Adding the gem back to the Gemfile as a bridge is not enough on its own: the gem's only entry file is `active_record/deprecated_finders.rb`, and Bundler.require tries `activerecord-deprecated_finders` and then `activerecord/deprecated_finders`, finds neither, and moves on without an error. The gem ends up in the bundle but never loaded, so everything it was meant to bridge still fails on 4.1: find_all_by_*, find_last_by_*, scoped_by_*, the dynamic find_or_create_by_* / find_or_initialize_by_* forms, find(:all / :first / :last), finder options on find / first / last / calculations, update_all with conditions, and the association :conditions / :order / :include / :uniq / :readonly options. The pattern flags a `gem 'activerecord-deprecated_finders'` line whose `require:` is not the string `active_record/deprecated_finders`: no `require:` at all, `require: false`, which leaves it unloaded the same way, or another string such as `require: 'activerecord-deprecated_finders'`, which Bundler cannot load either. A `require:` inside a trailing comment does not count; one on a continuation line after a trailing comma does. Gemfile.next is not searched: next_rails creates it as a symlink to Gemfile, so it would report every site twice. It only reads the Gemfile, so it cannot see a manual `require \"active_record/deprecated_finders\"` elsewhere (config/application.rb, an initializer); such an app loads the gem and is flagged anyway"
+      fix: "First search for a manual require: `grep -rn \"active_record/deprecated_finders\" config lib`. If one runs at boot, the gem is loaded and nothing needs to change. Otherwise, if the call sites are not migrated yet, name the entry file: `gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders'`. It is harmless on 4.0, which loads the gem anyway, so the same line works on both sides of a dual boot. Better, once the call sites are migrated, remove the gem. `find_by_*` and `find_by_*!` are still in Rails 4.1 core and do not need it"
+      variable_name: "DEPRECATED_FINDERS_AUTOREQUIRE"
+
+    - name: "update_all with a conditions (or options) argument"
+      kind: breaking
+      pattern: "(?<!def )(?<!def self\\.)\\bupdate_all(?:\\(\\s*|[ \\t]+)(?:\\{[^{}]*\\}|\\[[^\\[\\]]*\\]|\"[^\"\\n]*\"|'[^'\\n]*'|(?:@{1,2}|::)?\\w+(?:(?:\\.|::)\\w+)*[!?]?(?:\\([^()\\n]*\\))?(?![\\w:]))\\s*,"
+      exclude: "\\A\\s*#"
+      search_paths:
+        - "app/"
+        - "lib/"
+        - "spec/"
+        - "test/"
+      explanation: "Rails 4.0 core already defines `Relation#update_all(updates)` with one argument. The two- and three-argument forms, `update_all(updates, conditions)` and `update_all(updates, conditions, limit: n, order: x)`, only kept working on 4.0 because activerecord-deprecated_finders, a 4.0 dependency, wraps update_all and warns `Relation#update_all with conditions is deprecated`. Rails 4.1 drops that dependency, so the call raises `ArgumentError: wrong number of arguments (2 for 1)`. The pattern is the same as the 4.0 hop's UPDATE_ALL_TWO_ARG: it flags an update_all, with or without parentheses, whose first argument (a hash literal, a string, an array, or a variable or method call) is followed by a comma, and skips `def update_all` and commented-out lines, so the single-argument form, including a keyword hash like `update_all(a: 1, b: 2)`, is not flagged. It also matches a call split across lines. The multi-line reach needs the whole-file scanner (detection-scripts/scan_patterns.rb), which matches file content; a line-based search such as grep only sees calls that fit on one line. Misses: a first argument that is a hash with a nested hash literal, or a method call with nested parentheses"
+      fix: "Move the conditions into a where chain: `Model.update_all(updates, conditions)` becomes `Model.where(conditions).update_all(updates)`; `update_all(updates, conditions, limit: 10, order: :id)` becomes `where(conditions).order(:id).limit(10).update_all(updates)`. Keep the condition's shape as written (hash, string, or array). The chained form works on Rails 3.2, 4.0 and 4.1, so the rewrite can ship before the bump. Loading activerecord-deprecated_finders on 4.1 restores the old form with a warning, but only once `active_record/deprecated_finders` is required, by the Gemfile `require:` option or a manual require (see DEPRECATED_FINDERS_AUTOREQUIRE)"
+      variable_name: "UPDATE_ALL_WITH_CONDITIONS"
+
+    - name: "Calculation with finder options (count / sum / maximum / ... with conditions:, joins:, group:)"
+      kind: breaking
+      pattern: "\\.(count|sum|average|minimum|maximum|calculate)\\((?:(?:[^()]|\\([^()]*\\))*?(?<!\\w):?(conditions|include|joins|having|select|readonly|lock|extend)|\\s*(?::\\w+|[\"'][^\"'\\n]*[\"'])\\s*,(?:[^()]|\\([^()]*\\))*?(?<!\\w):?(group|order|limit|offset|from))(:|\\s*=>)"
+      exclude: ""
+      search_paths:
+        - "app/"
+        - "lib/"
+        - "spec/"
+        - "test/"
+      explanation: "On Rails 4.0, `count`, `sum`, `average`, `minimum`, `maximum` and `calculate` accept finder options (`:conditions`, `:joins`, `:group`, `:select`, `:order`, `:include`, ...) only because activerecord-deprecated_finders, a 4.0 dependency, overrides `Relation#calculate`, applies the options as a scope, and warns `Relation#calculate with finder options is deprecated`. Rails 4.1 drops that dependency, and core 4.1 still accepts the options hash but never reads it. Nothing raises: the options are silently ignored. `Item.count(conditions: { color: \"red\" })` counts every row, `maximum(:price, group: :color)` returns one scalar instead of a Hash keyed by group, and `sum(:price, joins: ...)` sums without the join. The pattern flags a calculation call whose arguments contain one of the finder option keys, in `key:` or `:key =>` form, including a call split across lines. The keys that plain Ruby code also uses as keyword names (`:group`, `:order`, `:limit`, `:offset`, `:from`) count only after a leading column argument, as in `maximum(:price, group: :color)`, so a service object call like `TaxCalculator.calculate(order: order)` or `Shipping.calculate(from: a, to: b)` is not flagged. A calculation with only one of those keys and no column argument, such as `count(order: \"id\")`, is missed, so check calculations that pass only those keys by hand. The multi-line reach needs the whole-file scanner (detection-scripts/scan_patterns.rb), which matches file content; a line-based search such as grep only sees calls that fit on one line. A nested call's own arguments are stepped over, so `count(build_scope(select: :id))` is not flagged. A column passed as a variable (`count(col, group: :color)`) is missed for the keys that need a leading column, and any `count` / `sum` on a non-Active Record receiver that takes these keys is flagged, so read each hit. `:distinct` is a different case, see DISTINCT_COUNT_OPTION"
+      fix: "Apply each option as a chained scope before the calculation and keep the column argument as written: `count(conditions: c)` becomes `where(c).count`; `maximum(:price, group: :color)` becomes `group(:color).maximum(:price)` (still a Hash); `sum(:price, joins: :orders, conditions: c)` becomes `joins(:orders).where(c).sum(:price)`; `count(select: \"DISTINCT items.id\")` becomes `select(\"DISTINCT items.id\").count`. The chained form works on Rails 3.2, 4.0 and 4.1. Loading activerecord-deprecated_finders on 4.1 restores the old behavior with a warning, but only once `active_record/deprecated_finders` is required, by the Gemfile `require:` option or a manual require (see DEPRECATED_FINDERS_AUTOREQUIRE)"
+      variable_name: "CALCULATE_FINDER_OPTIONS"
+
+    - name: ":distinct option on count / calculate"
+      kind: breaking
+      pattern: "\\.(count|calculate)\\([^)]*(?<!\\w):?distinct(:|\\s*=>)\\s*true"
+      exclude: ""
+      search_paths:
+        - "app/"
+        - "lib/"
+        - "spec/"
+        - "test/"
+      explanation: "Rails 4.0 core deprecates the `:distinct` option on `count` / `calculate` (`The :distinct option for Relation#count is deprecated. Please use Relation#distinct instead`) but still honors it. Rails 4.1 removes the handling: the options hash is accepted and never read, so `Item.count(:owner_id, distinct: true)` runs a plain COUNT and returns the number of rows, not the number of distinct values. Nothing raises. activerecord-deprecated_finders does not restore it: its `calculate` override passes `:distinct` through to core, which ignores it. The pattern flags `distinct: true` or `:distinct => true` inside a count / calculate call, including a call split across lines. The multi-line reach needs the whole-file scanner (detection-scripts/scan_patterns.rb), which matches file content; a line-based search such as grep only sees calls that fit on one line. `count(\"DISTINCT col\")` is a different form that still works and is not flagged. A call that also carries finder options (`conditions:`, `joins:`) is flagged by CALCULATE_FINDER_OPTIONS too; fix both in one edit"
+      fix: "Move it onto the relation: `rel.count(:col, distinct: true)` becomes `rel.distinct.count(:col)`. Keep the column symbol so Rails still qualifies it with the table name. `Relation#distinct` exists on 4.0, so the rewrite works on both sides of a dual boot, and it is the name later Rails versions keep (`uniq` is deprecated in 5.0). With finder options as well: `count(:col, conditions: c, distinct: true)` becomes `where(c).distinct.count(:col)`. `distinct: false` was the default and can simply be dropped"
+      variable_name: "DISTINCT_COUNT_OPTION"
 
     - name: "JoinDependency::JoinAssociation internals (parent_table_name, join_to)"
       kind: breaking
@@ -433,7 +482,7 @@ dependencies:
   activerecord-deprecated_finders:
     check: false
     gem_name: "activerecord-deprecated_finders"
-    message: "Short-term bridge: restores find_all_by_*, find_last_by_*, scoped_by_*, and dynamic find_or_*_by_* finders removed from Rails 4.1. Also restores the old association finder options (:conditions, :order, :uniq, :readonly and the rest of that set) on has_many / has_one / belongs_to, with a deprecation warning. It does not restore them on has_and_belongs_to_many, which drops them silently at 4.1, and on Ruby 2.3+ it drops a Hash-valued :conditions. It also restores the find(:first, :conditions => ...) and two-argument update_all forms that old gem versions such as acts_as_list below 0.3.0 still call. It also restores the Array-returning Relation#all"
+    message: "Short-term bridge: restores find_all_by_*, find_last_by_*, scoped_by_*, dynamic find_or_*_by_* finders, finder options and update_all with conditions, removed from Rails 4.1. Also restores the old association finder options (:conditions, :order, :uniq, :readonly and the rest of that set) on has_many / has_one / belongs_to, with a deprecation warning. It does not restore them on has_and_belongs_to_many, which drops them silently at 4.1, and on Ruby 2.3+ it drops a Hash-valued :conditions. It also restores the find(:first, :conditions => ...) and two-argument update_all forms that old gem versions such as acts_as_list below 0.3.0 still call. It also restores the Array-returning Relation#all. Declare it with require: 'active_record/deprecated_finders'; a bare gem line is never loaded on 4.1"
     url: "https://github.com/rails/activerecord-deprecated_finders"
 
   spring:
