@@ -503,7 +503,7 @@ upgrade_findings:
 
     - name: "update_all with conditions (two-arg and three-arg forms)"
       kind: "deprecation"
-      pattern: "(?<!def )(?<!def self\\.)\\bupdate_all(?:\\(\\s*|[ \\t]+)(?:\\{[^{}]*\\}|\\[[^\\[\\]]*\\]|\"[^\"\\n]*\"|'[^'\\n]*'|[\\w.@:]+(?:\\([^()\\n]*\\))?(?![\\w:]))\\s*,"
+      pattern: "(?<!def )(?<!def self\\.)\\bupdate_all(?:\\(\\s*|[ \\t]+)(?:\\{[^{}]*\\}|\\[[^\\[\\]]*\\]|\"[^\"\\n]*\"|'[^'\\n]*'|(?:@{1,2}|::)?\\w+(?:(?:\\.|::)\\w+)*[!?]?(?:\\([^()\\n]*\\))?(?![\\w:]))\\s*,"
       exclude: "\\A\\s*#"
       search_paths:
         - "app/"

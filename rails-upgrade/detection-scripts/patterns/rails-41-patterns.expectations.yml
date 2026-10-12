@@ -13,11 +13,14 @@
 
 DYNAMIC_FINDERS:
   match:
+    # implicit receiver inside the model
+    - "    find_all_by_email(email)"
     - "User.find_all_by_email(email)"
     - "User.find_last_by_email(email)"
     - "User.scoped_by_status(\"active\")"
     - "  owner.items.find_all_by_color_and_size(color, size)"
   no_match:
+    - "  def self.find_all_by_status(status)"
     - "User.find_by_email(email)"
     - "User.find_by_email!(email)"
     - "User.find_by(email: email)"
@@ -251,6 +254,9 @@ DEPRECATED_FINDERS_AUTOREQUIRE:
     - "gem 'activerecord-deprecated_finders', require: 'activerecord-deprecated_finders'"
     - "gem 'activerecord-deprecated_finders', \"1.0.4\" # require: 'active_record/deprecated_finders' later"
   no_match:
+    # a # inside a git option is not a comment
+    - "gem 'activerecord-deprecated_finders', github: 'example/fork#branch', require: 'active_record/deprecated_finders'"
+    # (require: on a continuation line is also skipped; proved with pattern_lab.rb scan)
     - "gem 'activerecord-deprecated_finders', require: 'active_record/deprecated_finders'"
     - "gem \"activerecord-deprecated_finders\", \"~> 1.0.4\", require: \"active_record/deprecated_finders\""
     - "gem 'activerecord-deprecated_finders', :require => 'active_record/deprecated_finders'"
@@ -262,6 +268,8 @@ UPDATE_ALL_WITH_CONDITIONS:
   # in the whole-file scanner (detection-scripts/scan_patterns.rb); a line-based
   # search sees single-line calls only. Fixtures are single lines.
   match:
+    # paren-less calls, as in the 4.0 hop's UPDATE_ALL_TWO_ARG
+    - "    Item.update_all \"price = 0\", \"color = 'red'\""
     - "Item.update_all({ price: 0 }, { color: \"red\" })"
     - "Item.update_all(\"price = 0\", [\"color = ?\", color])"
     - "Item.update_all('price = 0', 'color = \"red\"')"
@@ -271,6 +279,9 @@ UPDATE_ALL_WITH_CONDITIONS:
     - "Item.update_all(self.class.reset_values, { id: ids }, limit: 10)"
     - "Item.update_all({ price: 0 }, nil, order: :id, limit: 5)"
   no_match:
+    - "  def update_all(updates, conditions = nil)"
+    - "  # Item.update_all(updates, conditions)"
+    - "    Item.update_all(price:0, color: \"blue\")"
     - "Item.where(color: \"red\").update_all(price: 0)"
     - "Item.update_all(price: 0, color: \"blue\")"
     - "Item.update_all(:price => 0, :color => \"blue\")"
@@ -286,6 +297,7 @@ CALCULATE_FINDER_OPTIONS:
   # the whole-file scanner (detection-scripts/scan_patterns.rb); a line-based
   # search sees single-line calls only. Fixtures are single lines.
   match:
+    - "    Item.sum(:price, extend: PriceExtension)"
     - "Item.count(conditions: { color: \"red\" })"
     - "Item.count(:id, :conditions => [\"color = ?\", color])"
     - "Item.maximum(:price, group: :color)"
@@ -297,6 +309,8 @@ CALCULATE_FINDER_OPTIONS:
     - "Item.count(:all, group: :color)"
     - "Item.sum(\"price\", :limit => 5)"
   no_match:
+    # a finder key inside a nested call's arguments
+    - "    stats.count(build_scope(select: :id))"
     - "Item.where(color: \"red\").count"
     - "Item.group(:color).maximum(:price)"
     - "Item.count(:owner_id, distinct: true)"

@@ -370,6 +370,8 @@ UPDATE_ALL_TWO_ARG:
     - "  model.update_all(set_sql(column), where_sql(column))"
     - "    Item.update_all \"price = 0\", \"archived = 1\""
   no_match:
+    # a one-argument keyword hash written without a space after the colon
+    - "    Item.update_all(price:0, color: \"blue\")"
     - "  def update_all(updates, conditions = nil)"
     - "User.where(id: 1).update_all(active: false)"
     # one array argument

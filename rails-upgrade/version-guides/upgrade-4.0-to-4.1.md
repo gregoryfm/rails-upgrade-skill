@@ -1380,7 +1380,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `NameError: uninitialized constant MultiJson` | "MultiJSON Removed from Rails" — add `gem 'multi_json'` or move to `to_json` / `JSON.parse` |
 | `NoMethodError: undefined method 'find_all_by_email'` | "Dynamic Finders Removed" — rewrite as `where(email: email)`, or `activerecord-deprecated_finders` temporarily |
 | `ActiveRecord::RecordNotFound: Couldn't find all ... with 'id': (first, {:conditions=>...})` from inside a gem, or `ArgumentError: wrong number of arguments` from a gem's `update_all` call | "Dynamic Finders Removed": upgrade the gem (e.g. `acts_as_list` to 0.3+) |
-| `NoMethodError` on `find_all_by_*` (or another bridged call) with `activerecord-deprecated_finders` in the Gemfile | "Dynamic Finders Removed": add `require: 'active_record/deprecated_finders'` to the gem line |
+| `NoMethodError` on `find_all_by_*`, `ArgumentError (2 for 1)` from `update_all`, or calculations ignoring their options, with `activerecord-deprecated_finders` in the Gemfile | "Dynamic Finders Removed": add `require: 'active_record/deprecated_finders'` to the gem line |
 | `ArgumentError: wrong number of arguments (2 for 1)` from `update_all` | "`update_all` With a Conditions Argument Removed": move the conditions into `where(...)` |
 | `count(conditions: ...)` returns the total row count; `maximum(:col, group: ...)` returns a scalar instead of a Hash | "Calculations Silently Ignore Finder Options": chain `where` / `joins` / `group` before the calculation |
 | `count(:col, distinct: true)` returns the row count instead of the distinct count | "`count(distinct: true)` Silently Ignored": use `distinct.count(:col)` |
