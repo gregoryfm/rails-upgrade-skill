@@ -1,6 +1,6 @@
 ---
 name: rails-upgrade
-description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, or querying version-specific changes, or answering what stands between the app and the next Rails version. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
+description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, querying version-specific changes, or answering what stands between the app and the next Rails version. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
 ---
 
 # Rails Upgrade Assistant Skill

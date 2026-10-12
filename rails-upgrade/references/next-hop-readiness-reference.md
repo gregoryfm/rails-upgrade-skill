@@ -11,7 +11,7 @@
 ## Steps
 
 1. **Patch**: `workflows/00-verify-latest-patch-workflow.md` Steps 1 and 2. Report it, do not block.
-2. **Gems**: `ruby <skill>/detection-scripts/gem_limits.rb` lists the locked gems whose gemspec excludes the next hop. If next_rails is already in the bundle, `bundle exec bundle_report compatibility --rails-version=<target>` adds the version to bump to.
+2. **Gems**: `ruby <skill>/detection-scripts/gem_limits.rb` lists the locked gems whose gemspec excludes the next hop. If next_rails is already in the bundle, `bundle exec bundle_report compatibility --rails-version=<target>` adds the version to bump to. If `Gemfile.next.lock` already pins the target, the gem side is resolved: say so instead of listing caps.
 3. **Code**: `ruby <skill>/detection-scripts/scan_patterns.rb --summary`. It names the same hop as step 2. If that hop has no patterns file, search by hand from its version guide, as `workflows/05-detect-breaking-changes-workflow.md` does, and say so. Read one site of each HIGH finding before listing it (`workflows/05-detect-breaking-changes-workflow.md` Step 3).
 
 ## Answer

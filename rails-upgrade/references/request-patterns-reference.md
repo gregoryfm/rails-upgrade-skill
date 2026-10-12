@@ -29,4 +29,4 @@
 
 Analysis Only intentionally skips Workflow 04 (Dual-Boot setup) and Workflow 03 (Validate Upgrade Path) because the user is not yet committing to an upgrade. Reports Only is a Full Upgrade that stops after Workflow 09: the user wants both deliverables and will do the implementation, CI sync and load_defaults work themselves.
 
-Next-Hop Readiness is not in the table: it uses only the patch check of Workflow 00 and two scripts. It is a quick read-only answer for the next hop only, with no test suite, no dual-boot setup and no report. Follow `references/next-hop-readiness-reference.md`.
+Next-Hop Readiness is not in the table: it uses only the patch check of Workflow 00 and two scripts. It is a quick read-only answer for the next hop only, with no test suite, no next_rails setup and no report. Follow `references/next-hop-readiness-reference.md`.

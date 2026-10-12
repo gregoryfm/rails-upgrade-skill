@@ -7,7 +7,7 @@
 ## Inputs
 
 - `Gemfile.lock`
-- `next_rails` installed in the project
+- `next_rails` installed in the project (not needed for the first pass)
 - Target Rails version
 
 ## Outputs

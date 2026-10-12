@@ -18,9 +18,10 @@ module Hop
     g ? File.basename(g)[/\Aupgrade-(\d+\.\d+)-to-/, 1] : nil
   end
 
-  # { :from, :to, :locked, :source } or { :error }. The hop comes from the
-  # version guides; the lockfile's rails (or railties, for apps without the
-  # rails gem) gives the current version when there is no --target.
+  # { :from, :to, :locked, :source, :reached } or { :error }. The hop comes
+  # from the version guides; the lockfile's rails (or railties, for apps
+  # without the rails gem) is the current version. :reached is true when the
+  # lockfile is already on the --target version or past it.
   def self.resolve(lock_text, target_arg, lock_name = "Gemfile.lock")
     name = %w[rails railties].find { |n| lock_text.to_s =~ /^    #{n} \((\d+\.\d+)[^)]*\)/ }
     current = name ? $1 : nil
@@ -32,9 +33,6 @@ module Hop
       return { :error => "--target #{target_arg.inspect} is not a Rails version like 4.1" } unless target
       from = from_for(target)
       return { :error => "no version guide ends at Rails #{target}" } unless from
-      if current && Gem::Version.new(target) <= Gem::Version.new(current)
-        return { :error => "#{lock_name} is already on Rails #{current}; pass a --target ahead of it" }
-      end
       source = "--target"
     else
       return { :error => "no rails or railties in #{lock_name}; pass --target X.Y" } unless current
@@ -43,6 +41,7 @@ module Hop
       from, target = current, File.basename(g)[/-to-(\d+\.\d+)\.md\z/, 1]
       source = "#{lock_name} pins #{name} #{locked}"
     end
-    { :from => from, :to => target, :locked => name ? "#{name} #{locked}" : nil, :source => source }
+    reached = current && Gem::Version.new(target) <= Gem::Version.new(current) ? true : false
+    { :from => from, :to => target, :locked => name ? "#{name} #{locked}" : nil, :source => source, :reached => reached }
   end
 end

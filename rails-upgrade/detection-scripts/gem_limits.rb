@@ -16,7 +16,7 @@ require "rubygems"
 require_relative "hop"
 
 FRAMEWORK_GEMS = %w[
-  rails railties actionpack actionview activerecord activemodel activesupport
+  rails railties actionpack actionview activerecord activemodel activesupport activeresource
   actionmailer activejob actioncable activestorage actiontext actionmailbox
 ].freeze
 
@@ -149,5 +149,6 @@ if $PROGRAM_NAME == __FILE__
   text = File.read(lockfile, :encoding => "UTF-8")
   hop = Hop.resolve(text, opts[:target], File.basename(lockfile))
   abort("gem_limits: #{hop[:error]}") if hop[:error]
+  abort("gem_limits: #{opts[:lockfile]} already resolves Rails #{hop[:to]}; check the other lockfile with --lockfile") if hop[:reached]
   print render(hop, opts[:lockfile], capped_gems(parse_lockfile(text), hop[:to]))
 end
