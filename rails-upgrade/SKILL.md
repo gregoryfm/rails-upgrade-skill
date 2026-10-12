@@ -1,6 +1,6 @@
 ---
 name: rails-upgrade
-description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, querying version-specific changes, or answering what stands between the app and the next Rails version. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
+description: Analyzes Rails applications and generates comprehensive upgrade reports with breaking changes, deprecations, and step-by-step migration guides for Rails 2.3 through 8.1. Use when upgrading Rails applications, planning multi-hop upgrades, or querying version-specific changes, or answering what stands between the app and the next Rails version. Based on FastRuby.io methodology and "The Complete Guide to Upgrade Rails" ebook.
 ---
 
 # Rails Upgrade Assistant Skill
@@ -103,8 +103,8 @@ When proposing code fixes that must work with both the current and target Rails 
 
 ### Reference Materials
 - `references/sequential-strategy-reference.md` - Sequential upgrade rule (no version skipping) and the supported upgrade paths tables. Load in Workflow 03.
-- `references/request-patterns-reference.md` - Which workflows run for each request shape (full upgrade, multi-hop, analysis only, reports only, next-hop readiness). Read at the start of a session.
-- `references/next-hop-readiness-reference.md` - Read-only answer to "what do I need for the next Rails version?": patch status, gem limits and code findings for the next hop only, no test suite. Load when the request is the Next-Hop Readiness shape.
+- `references/request-patterns-reference.md` - Which workflows run for each request shape (full upgrade, multi-hop, analysis only, reports only). Read at the start of a session.
+- `references/next-hop-readiness-reference.md` - Read-only answer to "what do I need for the next Rails version?". Load for the Next-Hop Readiness request shape.
 - `references/no-test-suite-smoke-reference.md` - **Load from Workflow 01 when no runnable RSpec/Minitest suite exists** - Rails boot, routes, migration-status, and build smoke baseline with partial-confidence reporting
 - `references/deprecation-warnings-reference.md` - Finding and fixing deprecations
 - `references/staying-current-reference.md` - Keeping up with Rails releases
@@ -117,7 +117,7 @@ When proposing code fixes that must work with both the current and target Rails 
 ### Detection Pattern Resources
 - `detection-scripts/patterns/rails-*.yml` - Version-specific patterns for direct detection
 - `detection-scripts/scan_patterns.rb` - Runs every pattern for a hop against the app and prints a findings table. Run it in Workflow 05 instead of one Grep per pattern.
-- `detection-scripts/gem_limits.rb` - Lists the locked gems whose own gemspec excludes the target Rails, from the lockfile alone (no network, no next_rails). The first pass of Workflow 06, and the gem check of a next-hop readiness answer.
+- `detection-scripts/gem_limits.rb` - Lists the locked gems whose gemspec excludes the target Rails, from the lockfile alone. First pass of Workflow 06.
 
 ### Report Templates
 - `templates/upgrade-report-template.md` - Main upgrade report structure
@@ -146,7 +146,7 @@ When user requests an upgrade, follow this workflow. Sequential Process is Criti
 | 12 | Align load_defaults | AFTER THE UPGRADE IS COMPLETE. Delegates to the rails-load-defaults skill | `workflows/12-align-load-defaults-workflow.md` |
 | 13 | Mention cleanup | USER-TRIGGERED. Delegates to the `upgrade-cleanup` plugin only when the user explicitly asks | `workflows/13-mention-cleanup-workflow.md` |
 
-The Purpose column is a summary. Gates live only in each workflow's `## Gates` section. Which workflows run depends on the request shape (full upgrade, multi-hop, analysis only, reports only, next-hop readiness): `references/request-patterns-reference.md`.
+The Purpose column is a summary. Gates live only in each workflow's `## Gates` section. Which workflows run depends on the request shape (full upgrade, multi-hop, analysis only, reports only): `references/request-patterns-reference.md`.
 
 ---
 

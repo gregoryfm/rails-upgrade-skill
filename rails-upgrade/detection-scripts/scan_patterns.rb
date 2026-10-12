@@ -702,7 +702,11 @@ def self_test
     check.call("reads the hop from Gemfile.lock",
                Hop.resolve(File.read(File.join(dir, "Gemfile.lock")), nil)[:from] == "4.0")
   end
-  failures.concat(Hop.self_test_failures)
+  railties = "    railties (6.0.6)\n"
+  check.call("the 6.0 hop is 6.1 per the guides, read from railties",
+             Hop.resolve(railties, nil).values_at(:to, :source) == ["6.1", "Gemfile.lock pins railties 6.0.6"])
+  check.call("--target 7.0 starts where its guide does", Hop.resolve(railties, "7.0")[:from] == "6.1")
+  check.call("refuses a bad, unknown or past --target", ["v6", "9.9", "6.0"].all? { |t| Hop.resolve(railties, t)[:error] })
   # Every shipped guide indexes to well-formed ranges, and a `# BEFORE` comment
   # inside a code fence is not taken for a heading.
   Dir[File.join(Hop::GUIDES_DIR, "upgrade-*.md")].each do |g|
@@ -799,8 +803,6 @@ if $PROGRAM_NAME == __FILE__
       abort("scan_patterns: the next hop is Rails #{hop[:from]} -> #{target}, which has no patterns file. " \
             "Detect it from the version guide by hand, or pass --target X.Y to scan another hop on purpose.")
     end
-    # Scanning a hop the app is already past is allowed (looking for leftovers), but said.
-    hop_source += " (the lockfile is already on Rails #{hop[:current]})" if hop[:behind]
     patterns = patterns_file_for(target)
     unless File.file?(patterns)
       abort("scan_patterns: no patterns file for Rails #{target}. Available: #{available_versions.join(', ')}")
@@ -825,7 +827,7 @@ if $PROGRAM_NAME == __FILE__
   # 7.0 on a 4.0 app reads 6.1 -> 7.0, not 4.0 -> 7.0. Gemfile.lock is the
   # fallback when no guide ends there.
   meta = {
-    :from => hop ? hop[:from] : (Hop.from_for(target) || Hop.minor((Hop.locked_spec(lock_text) || [])[1])), :to => target, :root => root, :hop_source => hop_source, :modular_roots => roots,
+    :from => hop ? hop[:from] : Hop.from_for(target), :to => target, :root => root, :hop_source => hop_source, :modular_roots => roots,
     :patterns_rel => patterns.sub(%r{\A.*/(detection-scripts/)}, '\1')
   }
   text = opts[:format] == "json" ? render_json(meta, results) : render_markdown(meta, results, opts)
