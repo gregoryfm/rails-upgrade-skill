@@ -25,6 +25,11 @@ This file captures project-specific conventions Claude should follow when workin
   - Each finding carries `guide_entry` (file, heading, line range), derived from the guide's `**Pattern:**` markers, and `--explain VAR` prints that entry's text. Both are empty for a guide without markers
   - Prove Ruby 2.1 compatibility by running it, not by reading it: `docker run --rm -v "$PWD":/w -w /w ruby:2.1 ruby rails-upgrade/detection-scripts/scan_patterns.rb --self-test`. The image's locale is US-ASCII, as on many legacy app boxes, so read any UTF-8 file (the guides have emoji) with an explicit `:encoding => "UTF-8"`
 
+- `rails-upgrade/detection-scripts/gem_limits.rb` lists the locked gems whose own gemspec excludes the target Rails, from the lockfile alone. Same constraints as `scan_patterns.rb`: it runs with the app's Ruby, so stdlib only and Ruby 2.1 compatible. Both load `rails-upgrade/detection-scripts/hop.rb` for the hop (locked version, next hop from the guides, `--target` parsing), so they always name the same hop; change it there, not in either script.
+  - `ruby rails-upgrade/detection-scripts/gem_limits.rb --root path/to/app` checks the hop after the lockfile's Rails version; `--target X.Y` picks the hop, `--lockfile Gemfile.next.lock` reads the next boot
+  - `ruby rails-upgrade/detection-scripts/gem_limits.rb --self-test` runs built-in assertions against a fixture lockfile. CI runs it
+  - Prove Ruby 2.1 compatibility the same way: `docker run --rm -v "$PWD":/w -w /w ruby:2.1 ruby rails-upgrade/detection-scripts/gem_limits.rb --self-test`
+
 ## Workflows and references (`rails-upgrade/workflows/`, `rails-upgrade/references/`)
 
 The skill body follows the progressive-disclosure practice from the skill-creator skill and the [Agent Skills specification](https://agentskills.io/specification): `SKILL.md` is the short entry point, procedures live in `workflows/`, on-demand material lives in `references/`. Two kinds of file, named so a search hit shows which kind it is:

@@ -7,7 +7,7 @@
 ## Inputs
 
 - `Gemfile.lock`
-- `next_rails` installed in the project
+- `next_rails` installed in the project, for the primary check
 - Target Rails version
 
 ## Outputs
@@ -24,6 +24,16 @@
 - [ ] Run `bundle outdated`
 - [ ] Check gem compatibility with target Rails version
 - [ ] Identify gems that need upgrading first
+
+---
+
+## First pass: declared limits in the lockfile
+
+```bash
+ruby <skill>/detection-scripts/gem_limits.rb --target <target>
+```
+
+Reads only the lockfile (`--lockfile Gemfile.next.lock` for the next boot), so it runs before `next_rails` is installed and without network. It lists every locked gem whose own gemspec excludes the target Rails, with the gem that pulls it in when it is not in the Gemfile. Every gem it lists lands in required bumps or blockers; which of the two, and the version to bump to, is the primary check's answer. A gem it does not list can still be incompatible: a limit stated only in a README, or a resolution conflict, is invisible to it.
 
 ---
 
@@ -205,7 +215,7 @@ When the agent later runs the actual `bundle update`, prefer one gem at a time (
 
 ## Caveats
 
-- **Both checks need network.** `bundle_report` fetches gem metadata via Bundler; railsbump is a hosted service. Tell the user when either was skipped due to network failure — do not silently degrade.
+- **Both checks need network** (the first pass does not). `bundle_report` fetches gem metadata via Bundler; railsbump is a hosted service. Tell the user when either was skipped due to network failure — do not silently degrade.
 - **Slugs expire.** Don't store railsbump slugs across sessions. Re-POST the lockfile if the user comes back later.
 - **Compatibility ≠ green tests.** A `compatible` result means "the gem's gemspec accepts the target Rails" (and for railsbump, "the lockfile resolves"). Tests are still the ground truth.
 - **Submit each lockfile once per session.** Cache the slug in conversation context.

@@ -60,6 +60,7 @@ require "yaml"
 require "json"
 require "optparse"
 require "fileutils"
+require_relative "hop"
 
 PATTERNS_DIR = File.expand_path("patterns", __dir__)
 PRIORITIES = %w[high_priority medium_priority low_priority].freeze
@@ -326,14 +327,10 @@ def available_versions
   end.compact.sort_by { |v| version_key(v) }
 end
 
-GUIDES_DIR = File.expand_path("../version-guides", __dir__)
+GUIDES_DIR = Hop::GUIDES_DIR
 
-# The hop after `current` according to the version guides (6.0 -> 6.1), or
-# nil when no guide starts at `current`. The guides, not the patterns files,
-# define the hops: 6.1 has a guide and no patterns file.
 def guide_hop(current)
-  g = Dir[File.join(GUIDES_DIR, "upgrade-#{current}-to-*.md")].first
-  g ? File.basename(g)[/-to-(\d+\.\d+)\.md\z/, 1] : nil
+  Hop.next_after(current)
 end
 
 # The version guide whose hop ends at `target`, or nil.
@@ -468,14 +465,11 @@ end
 
 def lock_rails_version(lockfile)
   return nil unless File.file?(lockfile)
-  File.read(lockfile)[/^    rails \((\d+\.\d+)[^)]*\)/, 1]
+  Hop.minor(Hop.locked_version(File.read(lockfile, :encoding => "UTF-8")))
 end
 
 def normalize_target(t)
-  t = t.to_s.strip
-  t = "#{t[0..-2]}.#{t[-1]}" if t =~ /\A\d{2,3}\z/
-  t = t[/\A\d+\.\d+/] || t
-  t
+  Hop.normalize_target(t)
 end
 
 # ---------------------------------------------------------------------------
@@ -764,6 +758,9 @@ def self_test
   check.call("attaches the guide entry to a result",
              r72[0][:guide_entry] && r72[0][:guide_entry][:file] == "version-guides/upgrade-7.1-to-7.2.md" && r72[1][:guide_entry].nil?)
   check.call("normalizes 41 and 4.1.2", normalize_target("41") == "4.1" && normalize_target("4.1.2") == "4.1")
+  check.call("refuses a target that is not X.Y", %w[6 v6.1 6.x].all? { |t| normalize_target(t).nil? })
+  check.call("falls back to railties when the lockfile has no rails",
+             Hop.minor(Hop.locked_version("GEM\n  specs:\n    railties (6.0.6)\n")) == "6.0")
 
   # Every shipped patterns file must load and scan without raising.
   Dir.mktmpdir do |dir|
@@ -825,9 +822,10 @@ if $PROGRAM_NAME == __FILE__
   else
     if opts[:target]
       target = normalize_target(opts[:target])
+      abort("scan_patterns: --target #{opts[:target].inspect} is not a Rails version like 4.1") unless target
       hop_source = "--target"
     else
-      abort("scan_patterns: no Gemfile.lock with rails in #{root}; pass --target X.Y") unless current
+      abort("scan_patterns: no Gemfile.lock with rails or railties in #{root}; pass --target X.Y") unless current
       target = guide_hop(current)
       unless target
         abort("scan_patterns: no version guide starts at Rails #{current}, so the next hop is unknown. " \
