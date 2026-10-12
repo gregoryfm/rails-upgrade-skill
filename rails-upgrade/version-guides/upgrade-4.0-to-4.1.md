@@ -599,6 +599,57 @@ The scope is added to the normal foreign-key condition, while `:finder_sql` repl
 
 ---
 
+#### `JoinDependency` Internals Changed (`parent_table_name`, `join_to`)
+
+**What Changed:**
+Rails 4.1 rewrote `ActiveRecord::Associations::JoinDependency`. `JoinAssociation` no longer keeps a parent, so `parent_table_name` (4.0 delegated it to the parent) is gone, along with `parent`, `parent_table`, `join_dependency`, `join_type` and `aliased_prefix`, and `join_to(manager)` became `join_constraints(foreign_table, foreign_klass, node, join_type, tables, scope_chain, chain)`. The class is `:nodoc:`, but two kinds of app code reach into it:
+
+- **An association scope that takes an argument.** When the association is used in `joins`, Rails passes the `JoinAssociation` to the scope. A scope that builds SQL from `parent_table_name` raises on 4.1:
+  ```
+  NoMethodError: undefined method `parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation:0x...>
+  ```
+- **A monkeypatch on `join_to`.** `alias_method_chain :join_to, ...` raises `NameError` at load. A module prepended to override `join_to` loads fine and is never called, so whatever SQL it added silently disappears from every join.
+
+**Detection Pattern:**
+```ruby
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{join.parent_table_name}.active = 1")
+}, class_name: "Post"
+
+module SoftDeleteJoin
+  def join_to(manager) ... end
+end
+ActiveRecord::Associations::JoinDependency::JoinAssociation.send(:prepend, SoftDeleteJoin)
+
+class ActiveRecord::Associations::JoinDependency
+  class JoinAssociation
+    def join_to_with_soft_delete(manager) ... end
+    alias_method_chain :join_to, :soft_delete
+  end
+end
+```
+
+The pattern also flags `.parent_table`, `.aliased_prefix` and `.join_dependency`. It skips `.parent` and `.join_type`, which are too common elsewhere, so read every association scope that takes an argument for those two by hand.
+
+**Fix:**
+```ruby
+# BEFORE, in the Author model
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{join.parent_table_name}.active = 1")
+}, class_name: "Post"
+
+# AFTER: aliased_table_name still exists on 4.1; name the owner's table (Author here) directly
+has_many :live_posts, ->(join) {
+  where("#{join.aliased_table_name}.deleted_at IS NULL AND #{Author.quoted_table_name}.active = 1")
+}, class_name: "Post"
+```
+
+Naming the parent table directly only works when that table is not aliased in the query. If it can be (self-joins, the same association joined twice), move the condition into a scope applied where the query is built.
+
+For a `join_to` patch, write a `join_constraints` version for 4.1 and pick between the two with `NextRails.next?`. Then compare `to_sql` for the affected joins on both bundles: a patch that silently stops running changes queries without necessarily failing a test.
+
+---
+
 ### 🟡 MEDIUM PRIORITY
 
 #### MultiJSON Removed from Rails
@@ -806,6 +857,107 @@ ActiveSupport::JSON::Encoding.time_precision = 0
 ```
 
 Or update consumers to accept fractional seconds.
+
+---
+
+#### `Relation#all` Returns a Relation, Not an Array
+
+**What Changed:**
+On 4.0, `Relation#all` comes from the bundled `activerecord-deprecated_finders` gem: calling it on a relation or an association emits a deprecation warning and returns an `Array`. Rails 4.1 drops that gem, so the same call falls through to the model's class-level `all` and returns a `Relation`. Iteration keeps working. Code that treats the result as an `Array` does not: `sort!`, `pop`, `shift` and the other bang mutators raise `NoMethodError`, and `is_a?(Array)` turns `false`. The finder-options form (`.all(conditions: ...)`) raises `ArgumentError` on 4.1.
+
+`Model.all` on a constant is the replacement, not the problem. It returns a `Relation` on both versions and does not warn.
+
+**Detection Pattern:**
+```ruby
+Post.where(published: true).all
+@post.comments.all
+User.active.all.sort_by!(&:name)
+```
+
+**Fix:**
+```ruby
+# BEFORE
+posts = Post.where(published: true).all
+names = User.active.all.sort_by!(&:name)
+
+# AFTER
+posts = Post.where(published: true).to_a
+names = User.active.to_a.sort_by!(&:name)
+```
+
+Use `to_a`, not the `load` the deprecation message also suggests: `load` returns the `Relation`, so it changes the return type. Dropping `.all` entirely is fine where the caller only iterates, but keep `to_a` when the result is appended to with `<<`: on a `has_many` association of a saved record, `<<` saves the new record instead of adding to a local list.
+
+The pattern flags every `.all` not followed directly by `(`. Most hits are `Model.all`. Capybara's `page.all(".row")` is skipped, but `page.all ".row"` without parentheses matches, and so does `.all (...)` with a space before the parenthesis. Objects with their own `all` method also match. Check the receiver before rewriting. `gem 'activerecord-deprecated_finders'` restores the 4.0 behavior on 4.1 as a short-term bridge.
+
+---
+
+#### `count` on a Multi-Column `select` Builds Invalid SQL
+
+**What Changed:**
+Rails 4.0 ignores a `select` list that contains a comma or `*` when it builds a count, so the count runs `COUNT(*)`. Rails 4.1 passes the select list straight into `COUNT`:
+
+```
+ActiveRecord::StatementInvalid: SQLite3::SQLException: wrong number of arguments to function COUNT(): SELECT COUNT(title, version) FROM "posts"
+```
+
+PostgreSQL (`function count(...) does not exist`) and MySQL (`ERROR 1064`, a syntax error) reject it too. A table-qualified star breaks the same way: `Post.joins(:author).select("posts.*").count` runs `SELECT COUNT(posts.*) FROM ...` on 4.1, which SQLite and MySQL reject as a syntax error (PostgreSQL accepts it). A bare `select("*")` is fine: it becomes `COUNT(*)`. It only breaks when something calls `count` with no argument on that relation. `size` on a relation is safe on 4.1, because it calls `count(:all)` when the relation is not loaded. `size` on a `has_many` association that is not loaded is not safe: it calls `count` with no argument, so `has_many :summaries, -> { select("id, title") }` followed by `owner.summaries.size` raises. `empty?` and `any?` run an `exists?` query and are safe.
+
+**Detection Pattern:**
+```ruby
+Post.select("title, version").count
+Post.select(:title, :version).count
+Post.select([:title, :version]).count
+Post.joins(:author).select("posts.*").count
+scope :summary, -> { select("id, title") }  # counted later: Post.summary.count
+```
+
+**Fix:**
+```ruby
+# BEFORE
+Post.select("title, version").count
+
+# AFTER
+Post.select("title, version").count(:all)
+```
+
+On an association with a multi-column `select` in its scope, `owner.summaries.size` and `owner.summaries.many?` break the same way, so use `owner.summaries.count(:all)` there. `empty?` and `any?` are safe.
+
+The select and the `count` are often far apart: a scope or a method returns the relation and a caller, or a spec, counts it. Trace every caller of each flagged relation.
+
+---
+
+#### `RecordNotFound` Messages Quote the Primary Key
+
+**What Changed:**
+The message `ActiveRecord::RecordNotFound` carries now quotes the primary key column:
+
+| Call | Rails 4.0 | Rails 4.1 |
+|---|---|---|
+| `Post.find(999)` | `Couldn't find Post with id=999` | `Couldn't find Post with 'id'=999` |
+| `Post.find(1, 999)` | `Couldn't find all Posts with IDs (1, 999) (found 1 results, but was looking for 2)` | `Couldn't find all Posts with 'id': (1, 999) (found 1 results, but was looking for 2)` |
+
+Specs that assert the message text fail. If the app puts `e.message` into an API response, clients see the new wording after the upgrade.
+
+**Detection Pattern:**
+```ruby
+expect(json["error"]).to eq "Couldn't find Post with id=999"
+assert_equal "Couldn't find all Posts with IDs (1, 2)", error.message
+```
+
+**Fix:**
+```ruby
+# BEFORE
+expect(json["error"]).to eq "Couldn't find Post with id=999"
+
+# AFTER: assert what the app controls
+expect(response).to have_http_status(:not_found)
+expect { Post.find(999) }.to raise_error(ActiveRecord::RecordNotFound)
+
+# AFTER: if the text must stay under test, accept both forms while dual booting
+expect(json["error"]).to match(/Couldn't find Post with '?id'?=999/)
+```
+
+The pattern matches `Couldn't` and `Couldn\'t`, so single-quoted strings are flagged too. The single-id check needs `=` right after the column name, so app-written messages with spaces around `=` are not flagged. An app-written message in exactly the Rails shape is flagged but does not change; skip it.
 
 ---
 
@@ -1083,6 +1235,10 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 23. Pass a block to every `default_scope` that takes a relation or a hash (`default_scope { where(deleted_at: nil) }`).
 24. Rename any scope whose name matches an Active Record class method (`none`, `all`, `count`, ...), or delete it if the built-in does the same job.
 25. Replace `:finder_sql` / `:counter_sql` association options with a scope or a `find_by_sql` method.
+26. Replace `.all` on relations and associations with `.to_a` (leave `Model.all` alone).
+27. Change `count` to `count(:all)` on relations that carry a multi-column `select`.
+28. Port association scopes that call `parent_table_name` and any `join_to` monkeypatch to the 4.1 `JoinDependency` API.
+29. Rewrite specs that assert the `RecordNotFound` message text (`with id=` became `with 'id'=`).
 
 ### Phase 6: Testing
 - Run full test suite.
@@ -1112,6 +1268,12 @@ Error → section lookup for the most common errors encountered during this upgr
 | API clients fail to parse `2024-01-01T00:00:00.000Z` | "`as_json` Millisecond Precision for Time/DateTime/TWZ" — `ActiveSupport::JSON::Encoding.time_precision = 0` or update consumers |
 | Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed": move it to `data: { confirm: ... }` |
 | `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
+| `NoMethodError: undefined method 'sort!' for #<Post::ActiveRecord_Relation...>` on a `.all` result | "`Relation#all` Returns a Relation, Not an Array": replace `rel.all` with `rel.to_a` |
+| `NoMethodError: undefined method 'sort!'` (or another bang Array method) on a relation with no `.all` | "`ActiveRecord::Relation` Mutator Methods Removed": call `to_a` first |
+| `ActiveRecord::StatementInvalid` with `SELECT COUNT(title, version)` or `SELECT COUNT(posts.*)` | "`count` on a Multi-Column `select` Builds Invalid SQL": call `count(:all)` |
+| `NoMethodError: undefined method 'parent_table_name' for #<ActiveRecord::Associations::JoinDependency::JoinAssociation...>` | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": build the SQL without `parent_table_name` |
+| A join condition added by a `join_to` patch is missing from the SQL | "`JoinDependency` Internals Changed (`parent_table_name`, `join_to`)": port the patch to `join_constraints` |
+| Spec expects `Couldn't find Post with id=1` and gets `Couldn't find Post with 'id'=1` | "`RecordNotFound` Messages Quote the Primary Key": assert status and exception class, or match both forms |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |
