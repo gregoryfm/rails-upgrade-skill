@@ -376,6 +376,9 @@ ACTION_CACHING:
 PAGE_CACHING:
   # Pattern: caches_page / expire_page / page_cache_directory.
   match:
+    # the 3.2 cache_page writer, called by hand
+    - "    cache_page(response.body, request.path)"
+    - "    self.class.cache_page(content, path)"
     - "  caches_page :show"
     - "  caches_page :feed, if: Proc.new { |c| !c.request.format.html? }"
     - "    expire_page :controller => 'products', :action => 'show', :id => product.id"
@@ -444,6 +447,8 @@ NON_DIGEST_ASSET_PATHS:
   # Pattern: "[\"'(]\\s*/assets/"
   # A literal /assets/ path opened by a quote or a paren.
   match:
+    # an exact-match attribute selector depends on the non-digest name
+    - "  $('img[src=\"/assets/logo.png\"]').hide()"
     # plain CSS url() without quotes
     - "  background: url(/assets/icons/arrow.png) no-repeat;"
     # quoted url() in SCSS
@@ -461,6 +466,9 @@ NON_DIGEST_ASSET_PATHS:
     # the leading paren of a helper call does not make the literal path safe
     - "  background: url(image_path(\"/assets/backgrounds/grid.png\"));"
   no_match:
+    # CSS block comment lines
+    - "/* old: url(/assets/x.png) */"
+    - " * url(/assets/x.png)"
     # asset helpers resolve the digest themselves
     - "= image_tag \"logo.png\""
     - "  background-image: image-url(\"backgrounds/stripes.png\");"
@@ -616,6 +624,9 @@ DUPLICATE_ROOT_ROUTES:
   # Rails 4 rejects a second `root`; flag every root declaration so a human can
   # count them (a lone hit is noise, 2+ is the breaking case).
   match:
+    # as: :root registers :root again, and a comment cannot name the route
+    - "  root to: 'pages#home', constraints: WwwConstraint, as: :root"
+    - "  root to: 'pages#home' # was , as: :home"
     # hash form with to:
     - "  root to: \"home#index\""
     # legacy hash-rocket form
@@ -786,6 +797,10 @@ VALIDATES_AS_PARANOID:
     - '  # validates_as_paranoid'
 
 JS_COMPRESSOR_GEM_MISMATCH:
+  # The lookbehind also skips a line right after `unless next?` or
+  # `unless NextRails.next?` (the 3.2 side of the block form) and after an
+  # `else` that ends in CRLF; that needs the line before, so it is proved with
+  # pattern_lab.rb scan, not with these one-line fixtures.
   # Pattern: a Gemfile line declaring terser, unless the line before it is `else`
   # (the 3.2 branch of the fix). Strings with \n stand for two consecutive lines.
   match:
@@ -882,6 +897,8 @@ REMOTE_FORM_CSRF_TOKEN:
     - '= form_for @note, remote: true, html: { data: { remote: true } } do |f|'
     - '= form_for @note, html: { data: { confirm: "Sure?" } }, remote: true do |f|'
   no_match:
+    # a string-keyed data hash is stringified to the same data hash that keeps the token
+    - '= form_for @post, html: { "data" => { remote: true } } do |f|'
     - "= form_for @x, data: { remote: true, t: \"#{x}\" } do |f|"
     # data: { remote: true } keeps the hidden token on 4.0, whatever else the hash holds
     - '= form_for @note, html: { data: { remote: true } } do |f|'

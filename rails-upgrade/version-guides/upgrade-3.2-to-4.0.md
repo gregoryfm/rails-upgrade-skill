@@ -1013,7 +1013,10 @@ Rails 4.0 removes page caching and action caching from Action Pack and ships the
 separate gems. `caches_page`, `expire_page` and `page_cache_directory` move to
 `actionpack-page_caching`; `caches_action` and `expire_action` move to
 `actionpack-action_caching`. Without the matching gem, `caches_page` or `caches_action`
-raises `NoMethodError` when the controller class loads.
+raises `NoMethodError` when the controller class loads, and a leftover
+`config.action_controller.page_cache_directory` setting stops boot with
+`RuntimeError: Invalid option key: page_cache_directory=`. A hand-called `cache_page`
+moves to the page caching gem too.
 
 **Detection Pattern:**
 ```ruby
@@ -1035,7 +1038,9 @@ if next?
 end
 ```
 
-Call sites stay as they are.
+Call sites stay as they are. From actionpack-page_caching 1.0.1 the gem sets
+`page_cache_directory` to `public/` when the app does not; 1.0.0 leaves it empty, so
+pin `>= 1.0.1` or set it.
 
 ---
 
@@ -1822,6 +1827,8 @@ Error → section lookup for the most common errors encountered during this upgr
 | `NoMethodError: undefined method 'rescue_action'` | "`rescue_action` Removed — Use `rescue_from`" |
 | `NoMethodError: undefined method 'install_helpers'` | "`RouteSet#install_helpers` Removed": include `url_helpers` instead |
 | `NoMethodError: undefined method 'caches_page'` or `'caches_action'` | "Page and Action Caching Extracted": add the matching gem on the next side |
+| `RuntimeError: Invalid option key: page_cache_directory=` at boot | "Page and Action Caching Extracted": add `actionpack-page_caching` on the next side |
+| A custom form builder now wraps `label`, `hidden_field` or `fields_for` it used to skip | "`FormBuilder.field_helpers` Holds Symbols, Not Strings": compare against symbols |
 | `undefined local variable or method` in partial | "Partial Magic Variables Removed" — pass `locals:` |
 | Cache misses after upgrade | "`cache_key` Timestamp Format Changed" — changed to `:nsec` |
 | `invalid date` in fixtures | "Fixture Dates Must Be Cast to Strings" — cast with `.to_s(:db)` |
