@@ -35,7 +35,6 @@
 #    declares still counts, and the plain version is the one shown.
 
 require "optparse"
-require "fileutils"
 require "rubygems"
 require_relative "hop"
 
@@ -45,7 +44,7 @@ FRAMEWORK_GEMS = %w[
 ].freeze
 SPEC_SECTIONS = %w[GEM GIT PATH].freeze
 
-# { :specs => { name => { :version, :source, :deps => { name => req } } },
+# { :specs => { name => { :version, :source, :deps => { name => [req, ...] } } },
 #   :direct => [names] }
 def parse_lockfile(text)
   specs = {}
@@ -69,7 +68,11 @@ def parse_lockfile(text)
         current = (specs[$1] ||= { :version => version, :source => source, :deps => {} })
         current[:version] = version if current[:version].include?("-") && !version.include?("-")
       elsif current && line =~ /\A      (\S+)(?: \(([^)]+)\))?\z/
-        current[:deps][$1] ||= $2 || ">= 0"
+        # Platform variants each list their dependencies: keep every distinct
+        # requirement, so the strictest one is checked whatever the order.
+        reqs = (current[:deps][$1] ||= [])
+        req = $2 || ">= 0"
+        reqs << req unless reqs.include?(req)
       end
     end
   end
@@ -85,12 +88,16 @@ end
 def capped_gems(lock, target)
   specs = lock[:specs]
   parents = Hash.new { |h, k| h[k] = [] }
-  specs.each { |name, s| s[:deps].each { |dep, req| parents[dep] << [name, req] } }
+  specs.each { |name, s| s[:deps].each { |dep, reqs| parents[dep] << [name, reqs.join("; ")] } }
 
   specs.keys.sort.map do |name|
     next if FRAMEWORK_GEMS.include?(name)
     spec = specs[name]
-    limits = spec[:deps].select { |dep, req| FRAMEWORK_GEMS.include?(dep) && !allows_minor?(req, target) }
+    limits = []
+    spec[:deps].each do |dep, reqs|
+      next unless FRAMEWORK_GEMS.include?(dep)
+      reqs.each { |req| limits << [dep, req] unless allows_minor?(req, target) }
+    end
     next if limits.empty?
     direct = lock[:direct].include?(name)
     gem_parents = parents[name].reject { |parent, _| FRAMEWORK_GEMS.include?(parent) }
@@ -111,7 +118,7 @@ def render(meta, capped)
   out = []
   out << "# Gem limits: Rails #{meta[:from]} -> #{meta[:to]}"
   out << ""
-  out << "- Lockfile: `#{meta[:lockfile]}` (rails #{meta[:locked_rails]})"
+  out << "- Lockfile: `#{meta[:lockfile]}` (#{meta[:locked_rails]})"
   out << "- Hop source: #{meta[:hop_source]}"
   out << ""
   if capped.empty?
@@ -167,6 +174,10 @@ GEM
     variant_capped (1.0-java)
     variant_capped (1.0)
       railties (>= 4.0, < 6.1)
+    variant_later (1.0-x86_64-linux)
+      railties (>= 4.0)
+    variant_later (1.0)
+      railties (>= 4.0, < 5)
     rails (4.0.13)
       actionpack (= 4.0.13)
       sprockets-rails (~> 2.0)
@@ -194,11 +205,12 @@ DEPENDENCIES
   rails (= 4.0.13)
   simple_form
   variant_capped
+  variant_later
 LOCK
   check.call("parses the direct gems, ! and requirements stripped", lock[:direct].include?("forked_gem") && lock[:direct].include?("inherited_resources"))
   check.call("shows the plain version of a gem with platform variants", lock[:specs]["nokogiri"][:version] == "1.6.8")
   check.call("merges the platform variants' dependencies", lock[:specs]["nokogiri"][:deps].key?("mini_portile2"))
-  check.call("a bare dependency allows any version", lock[:specs]["devise"][:deps]["responders"] == ">= 0")
+  check.call("a bare dependency allows any version", lock[:specs]["devise"][:deps]["responders"] == [">= 0"])
 
   names41 = capped_gems(lock, "4.1").map { |g| g[:name] }
   check.call("4.1 caps haml-rails, simple_form, forked_gem (got #{names41.inspect})", names41 == %w[forked_gem haml-rails simple_form])
@@ -216,9 +228,9 @@ LOCK
   check.call("the framework gems are never listed", capped_gems(lock, "5.0").none? { |g| FRAMEWORK_GEMS.include?(g[:name]) })
   check.call("a limit only one platform variant declares counts (variant_capped)",
              capped_gems(lock, "6.1").any? { |g| g[:name] == "variant_capped" })
-  check.call("refuses a target that is not X.Y", %w[6 v6.1 6.x].all? { |t| Hop.normalize_target(t).nil? })
-  check.call("falls back to railties when the lockfile has no rails",
-             Hop.minor(Hop.locked_version("GEM\n  specs:\n    railties (6.0.6)\n")) == "6.0")
+  check.call("a stricter limit on a later platform variant counts (variant_later)",
+             capped_gems(lock, "5.0").any? { |g| g[:name] == "variant_later" })
+  failures.concat(Hop.self_test_failures)
 
   if failures.empty?
     puts "gem_limits: self-test OK"
@@ -244,23 +256,16 @@ if $PROGRAM_NAME == __FILE__
   lockfile = File.expand_path(opts[:lockfile], root)
   abort("gem_limits: #{lockfile} not found") unless File.file?(lockfile)
   text = File.read(lockfile, :encoding => "UTF-8")
-  locked = Hop.locked_version(text)
-  current = Hop.minor(locked)
-  abort("gem_limits: no rails or railties in #{lockfile}; pass --target X.Y") unless current || opts[:target]
-
-  if opts[:target]
-    target = Hop.normalize_target(opts[:target])
-    abort("gem_limits: --target #{opts[:target].inspect} is not a Rails version like 4.1") unless target
-    hop_source = "--target"
-  else
-    target = Hop.next_after(current)
-    abort("gem_limits: no version guide starts at Rails #{current}, so the next hop is unknown. Pass --target X.Y.") unless target
-    hop_source = "#{File.basename(lockfile)} pins rails #{current}; next hop is #{target}"
+  hop = Hop.resolve(text, opts[:target], File.basename(lockfile))
+  abort("gem_limits: #{hop[:error]}") if hop[:error]
+  if hop[:behind]
+    abort("gem_limits: #{File.basename(lockfile)} is already on Rails #{hop[:current]}, so it resolves for #{hop[:to]}; " \
+          "pass a --target ahead of it, or --lockfile for the other boot")
   end
 
   meta = {
-    :from => current || "?", :to => target, :lockfile => lockfile.sub("#{root}/", ""),
-    :locked_rails => locked || "none", :hop_source => hop_source
+    :from => hop[:from], :to => hop[:to], :lockfile => lockfile.sub("#{root}/", ""),
+    :locked_rails => hop[:locked] || "none", :hop_source => hop[:source]
   }
-  print render(meta, capped_gems(parse_lockfile(text), target))
+  print render(meta, capped_gems(parse_lockfile(text), hop[:to]))
 end

@@ -4,7 +4,7 @@
 
 ## Rules
 
-- **One hop.** The answer covers the next version on the app's upgrade path, the hop the version guides start at its current Rails (usually the next minor, a major after X.2: 4.2 → 5.0, 7.2 → 8.0), the way `references/sequential-strategy-reference.md` plans hops. Never list what later versions remove, even when a scan or the user mentions them. If the user names a farther target, say the readiness check covers the next hop on the way there and name it.
+- **One hop.** The answer covers the next version on the app's upgrade path, the hop the version guides start at its current Rails (the guide named `upgrade-<current>-to-*.md`: usually the next minor, a major when the line ends, as in 4.2 → 5.0, 6.1 → 7.0 and 7.2 → 8.0), the way `references/sequential-strategy-reference.md` plans hops. Never list what later versions remove, even when a scan or the user mentions them. If the user names a farther target, say the readiness check covers the next hop on the way there and name it.
 - **Read-only.** No Gemfile or lockfile edits, no `bundle install`, no next_rails setup, no test suite run, no code fixes.
 - **Only what ran.** Every item in the answer comes from the steps below. What they cannot see goes under "Not checked", not into a guess.
 
