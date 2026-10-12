@@ -42,9 +42,9 @@ REQUIRE_STRONG_PARAMS:
 
 SCOPE_WITHOUT_LAMBDA:
   # Pattern: "scope\\s+:\\w+\\s*,\\s*where"
-  # Rails 4.0 requires every scope to wrap its query in a callable (lambda).
+  # Rails 4.0 warns for a scope body that is not callable; 4.1 raises when it runs.
   match:
-    # bare where() right after the scope name — the breaking form
+    # bare where() right after the scope name
     - "  scope :active, where(active: true)"
     # extra whitespace around the name and comma must still flag
     - "  scope :recent , where('created_at > ?', 1.week.ago)"
