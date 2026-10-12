@@ -386,7 +386,7 @@ belongs_to :account, -> { readonly }
 #### `:confirm` Option on Link and Button Helpers Removed
 
 **What Changed:**
-Rails 4.0 deprecated `:confirm` on `link_to`, `button_to`, `submit_tag`, `image_submit_tag` and `f.submit`, and still converted it to a `data-confirm` attribute. Rails 4.1 removed that conversion. The option now passes through as an ordinary HTML attribute:
+Rails 4.0 deprecated `:confirm` on `link_to`, `button_to`, `button_tag`, `submit_tag`, `image_submit_tag`, `f.submit` and `f.button`, and still converted it to a `data-confirm` attribute. Rails 4.1 removed that conversion. The option now passes through as an ordinary HTML attribute:
 
 ```erb
 <%= link_to "Delete", post_path(@post), method: :delete, confirm: "Are you sure?" %>
@@ -429,7 +429,7 @@ The `data:` form renders the same `data-confirm` attribute on 4.0 and 4.1, so th
 #### `AbstractController::Layouts` Moved to `ActionView::Layouts`
 
 **What Changed:**
-Rails 4.1 extracted Action View from Action Pack into the new `actionview` gem, and the layouts module moved with it: `AbstractController::Layouts` became `ActionView::Layouts`. No alias was left behind, so any class that still includes the old constant raises when it loads:
+Rails 4.1 extracted Action View from Action Pack into the new `actionview` gem, and the layouts module moved with it: `AbstractController::Layouts` became `ActionView::Layouts`, and `AbstractController::ViewPaths` became `ActionView::ViewPaths`. No alias was left behind, so any class that still includes the old constant raises when it loads:
 
 ```
 NameError: uninitialized constant AbstractController::Layouts
@@ -457,7 +457,7 @@ include(NextRails.next? ? ActionView::Layouts : AbstractController::Layouts)
 include ActionView::Layouts
 ```
 
-The `layout` DSL is the same in both modules, so nothing else in the class changes.
+Branch an `include AbstractController::ViewPaths` the same way, to `ActionView::ViewPaths`. The `layout` DSL is the same in both modules.
 
 ---
 
@@ -938,8 +938,8 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 16. Move association `:order` into scope lambdas, including every `has_one` and `has_and_belongs_to_many` (4.1 ignores the option there without an error).
 17. Replace association `uniq: true` with `-> { distinct }`, including every `has_and_belongs_to_many` (4.1 drops the option there without an error).
 18. Replace association `readonly: true` with `-> { readonly }` and delete redundant `readonly: false`, including on `has_and_belongs_to_many` (4.1 drops the option there without an error).
-19. Move `:confirm` on `link_to` / `button_to` / `submit_tag` / `f.submit` under `data: { confirm: ... }`.
-20. Switch `include AbstractController::Layouts` to `ActionView::Layouts` (branch on `NextRails.next?` while both versions boot).
+19. Move `:confirm` on `link_to` / `button_to` / `button_tag` / `submit_tag` / `f.submit` / `f.button` under `data: { confirm: ... }`.
+20. Switch `include AbstractController::Layouts` / `ViewPaths` to `ActionView::Layouts` / `ViewPaths` (branch on `NextRails.next?` while both versions boot).
 21. Upgrade `acts_as_list` below 0.3.0 (check the lockfile) to `~> 0.7.7`.
 
 ### Phase 6: Testing
@@ -969,7 +969,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | `TypeError: CacheDigests is not a class` from every `rake` task | "`cache_digests` Gem Collides with Core Cache Digests" — `gem 'cache_digests' unless NextRails.next?`, move `CacheDigests::*` calls to `ActionView::Digestor` |
 | API clients fail to parse `2024-01-01T00:00:00.000Z` | "`as_json` Millisecond Precision for Time/DateTime/TWZ" — `ActiveSupport::JSON::Encoding.time_precision = 0` or update consumers |
 | Delete link or submit button no longer asks for confirmation; the HTML has `confirm="..."` instead of `data-confirm` | "`:confirm` Option on Link and Button Helpers Removed": move it to `data: { confirm: ... }` |
-| `NameError: uninitialized constant AbstractController::Layouts` | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
+| `NameError: uninitialized constant AbstractController::Layouts` (or `::ViewPaths`) | "`AbstractController::Layouts` Moved to `ActionView::Layouts`": include `ActionView::Layouts` instead |
 | `ArgumentError: Unknown key: :conditions` when a model loads | "Association `:conditions` Option Removed": move the conditions into a scope lambda |
 | `has_and_belongs_to_many` returns rows its `:conditions` used to filter out | "Association `:conditions` Option Removed": habtm drops the option silently at 4.1, use a scope lambda |
 | `ArgumentError: Unknown key: :order` when a model loads | "Association `:order` Option Removed": move the order into a scope lambda |

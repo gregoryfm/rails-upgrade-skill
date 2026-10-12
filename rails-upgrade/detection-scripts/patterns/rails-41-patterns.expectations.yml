@@ -39,12 +39,17 @@ MULTI_JSON:
     - "  JSON.parse(response.body)"
     - "  ActiveSupport::JSON.decode(str)"
 
-# The pattern also spans up to four lines (a helper call whose confirm: sits on
-# a continuation line after a trailing comma, never past %>). Fixtures are per line, so that multi-line shape is
-# covered by the scanner, not by these fixtures. A bare `confirm:` line on its
-# own is a no_match here for the same reason.
+# The pattern also spans up to four lines (a helper call whose confirm: sits
+# on a continuation line after a trailing comma, never past %>). Fixtures are
+# per line, so that multi-line shape is covered by the scanner, not by these
+# fixtures. A bare `confirm:` line on its own is a no_match for that reason.
 CONFIRM_OPTION:
   match:
+    # button_tag and f.button converted confirm: on 4.0 too
+    - "<%= button_tag \"Delete all\", confirm: \"Sure?\" %>"
+    - "<%= f.button \"Go\", confirm: \"Sure?\" %>"
+    # string keys were stringified and converted the same way
+    - "<%= link_to \"Delete\", path, \"confirm\" => \"Sure?\" %>"
     - "<%= link_to \"Delete\", post_path(@post), method: :delete, confirm: \"Are you sure?\" %>"
     - "= link_to 'Remove', item_path(item), :confirm => 'Really remove?', :method => :delete"
     - "<%= button_to \"Destroy\", @post, method: :delete, confirm: t(\"posts.confirm_destroy\") %>"
@@ -56,6 +61,8 @@ CONFIRM_OPTION:
     - "<%= link_to \"Archive\", archive_path(@post), data: { a: { b: 1 } }, confirm: \"Archive it?\" %>"
     - "<%= link_to \"Archive\", archive_path(@post), 'data' => { method: :post }, confirm: \"Archive it?\" %>"
   no_match:
+    # button_to's form: hash takes its own attributes
+    - "<%= button_to \"Archive\", archive_path, form: { confirm: \"z\" } %>"
     - "<%= link_to \"Delete\", post_path(@post), method: :delete, data: { confirm: \"Are you sure?\" } %>"
     - "= link_to 'Remove', item_path(item), :data => { :confirm => 'Really remove?' }, :method => :delete"
     - "<%= button_to \"Destroy\", @post, \"data-confirm\" => \"Sure?\" %>"
@@ -71,12 +78,16 @@ CONFIRM_OPTION:
 
 ABSTRACT_CONTROLLER_LAYOUTS:
   match:
+    # ViewPaths moved with Layouts, and send(:include, ...) is common in hooks
+    - "  include AbstractController::ViewPaths"
+    - "  base.send(:include, AbstractController::Layouts)"
     - "  include AbstractController::Layouts"
     - "  include ::AbstractController::Layouts"
     - "    include AbstractController::Layouts # needed for layout \"pdf\""
     - "  include AbstractController::Rendering, AbstractController::Layouts"
     - "  include(AbstractController::Layouts)"
   no_match:
+    - "  # include AbstractController::Layouts"
     - "  include ActionView::Layouts"
     - "  include(NextRails.next? ? ActionView::Layouts : AbstractController::Layouts)"
     - "  include AbstractController::Rendering"
@@ -93,6 +104,9 @@ ACTS_AS_LIST_PRE_0_3:
     - "gem 'acts_as_list', '>= 0.1', '< 0.3'"
     - "      acts_as_list (~> 0.2.0)"
   no_match:
+    # a commented-out pin, and a git ref that is not a release constraint
+    - "# gem 'acts_as_list', '0.1.6'"
+    - "gem 'acts_as_list', github: 'example/acts_as_list', ref: '0.1.4'"
     - "    acts_as_list (0.3.0)"
     - "    acts_as_list (0.7.7)"
     - "    acts_as_list (0.9.19)"
