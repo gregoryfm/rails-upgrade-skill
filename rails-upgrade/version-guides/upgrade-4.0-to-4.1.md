@@ -365,32 +365,40 @@ belongs_to :account, -> { readonly }
 #### MultiJSON Removed from Rails
 
 **What Changed:**
-Rails 4.1 no longer depends on [`MultiJSON`](https://github.com/intridea/multi_json). Apps that reference `MultiJSON` directly will raise `NameError` once the transitive dependency goes away.
+Rails 4.1 no longer depends on the [`multi_json`](https://github.com/intridea/multi_json) gem. Its constant is `MultiJson` (there is no `MultiJSON` constant). Code that references `MultiJson` (calls, `rescue MultiJson::ParseError`, `MultiJson.use(:oj)` in an initializer, specs that parse response bodies) raises `NameError` once the transitive dependency goes away.
 
 **Detection Pattern:**
 ```ruby
 require 'multi_json'
-MultiJSON.dump(obj)
-MultiJSON.load(str)
+MultiJson.dump(obj)
+MultiJson.load(str)
 ```
 
 **Fix:**
 ```ruby
-# Option A — keep MultiJSON explicitly
+# Option A: keep multi_json explicitly (needed if the app sets an adapter with MultiJson.use)
 # Gemfile
 gem 'multi_json'
 
-# Option B — migrate to core JSON
+# Option B: migrate to core JSON
 # BEFORE
-MultiJSON.dump(obj)
-MultiJSON.load(str)
+MultiJson.dump(obj)
+MultiJson.load(str)
+MultiJson.load(str, symbolize_keys: true)
+MultiJson.dump(obj, pretty: true)
+rescue MultiJson::ParseError => e
 
 # AFTER
 obj.to_json
 JSON.parse(str)
+JSON.parse(str, symbolize_names: true)
+JSON.pretty_generate(obj)
+rescue JSON::ParserError => e
 ```
 
-**Do not** blindly substitute `JSON.dump` / `JSON.load` — those are the `JSON` gem's arbitrary-object (de)serializers and are unsafe on untrusted input.
+`JSON.parse` does not know `symbolize_keys:`. Passing it does nothing and the keys come back as strings, so rename the option to `symbolize_names:`. `decode` / `encode` are aliases of `load` / `dump` and map the same way. multi_json's json adapter passed `quirks_mode: true`, so on json 1.x a body that is a bare scalar (`42`, `null`) needs `JSON.parse(str, quirks_mode: true)`.
+
+**Do not** blindly substitute `JSON.dump` / `JSON.load`: those are the `JSON` gem's arbitrary-object (de)serializers and are unsafe on untrusted input.
 
 ---
 
@@ -773,7 +781,7 @@ ruby -v  # 1.9.3+ (2.0+ recommended)
 
 ### Phase 2: Pre-requisites
 1. Fix all current 4.0 deprecation warnings.
-2. Audit for `MultiJSON`, dynamic finders, implicit-join `where` strings, and inline-block callbacks that `return`.
+2. Audit for `MultiJson`, dynamic finders, implicit-join `where` strings, and inline-block callbacks that `return`.
 3. Audit for PG `json` / `hstore` access with symbol keys.
 4. List the locales the app actually uses.
 
@@ -823,7 +831,7 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 10. Convert `Relation.compact!` / `Relation.map!` etc. to `to_a` then mutate.
 11. Replace `render :text` with `:plain` / `:html` / `:body`.
 12. Pin JSON time precision if clients need it (`time_precision = 0`).
-13. Remove MultiJSON usage or add it back to the `Gemfile` explicitly.
+13. Remove `MultiJson` usage or add it back to the `Gemfile` explicitly.
 14. Migrate any `CacheDigests::*` call sites to `ActionView::Digestor` (the Gemfile gate in Phase 3 stops the rake abort; call sites still need rewriting).
 15. Move association `:conditions` into scope lambdas, including every `has_and_belongs_to_many` (4.1 drops the option there without an error).
 16. Move association `:order` into scope lambdas, including every `has_one` and `has_and_belongs_to_many` (4.1 ignores the option there without an error).
@@ -846,7 +854,7 @@ Error → section lookup for the most common errors encountered during this upgr
 
 | Error | See |
 |-------|-----|
-| `NameError: uninitialized constant MultiJSON` | "MultiJSON Removed from Rails" — add `gem 'multi_json'` or move to `to_json` / `JSON.parse` |
+| `NameError: uninitialized constant MultiJson` | "MultiJSON Removed from Rails" — add `gem 'multi_json'` or move to `to_json` / `JSON.parse` |
 | `NoMethodError: undefined method 'find_all_by_email'` | "Dynamic Finders Removed" — rewrite as `where(email: email)`, or `activerecord-deprecated_finders` temporarily |
 | Query returns zero rows after upgrade | "`default_scope` Chains with Other Scopes" — use `unscope(where: :col)` or `rewhere` |
 | `ActionController::InvalidAuthenticityToken` in controller tests on JS endpoints | "CSRF Protection Now Covers GET with JS Responses" — use `xhr :verb, :action` |

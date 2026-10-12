@@ -123,16 +123,18 @@ upgrade_findings:
       variable_name: "ASSOCIATION_READONLY"
 
   medium_priority:
-    - name: "MultiJSON usage"
+    - name: "MultiJson usage (multi_json gem)"
       kind: breaking
-      pattern: "\\bMultiJSON\\b|require\\s+['\"]multi_json['\"]"
+      pattern: "\\bMultiJson\\b|require\\s+['\"]multi_json['\"]"
       exclude: ""
       search_paths:
         - "app/"
         - "lib/"
         - "config/"
-      explanation: "Rails 4.1 no longer depends on MultiJSON. Apps that reference it directly will hit NameError once Rails stops pulling it in transitively. Gemfile is intentionally excluded — `gem 'multi_json'` IS the fix, not a breaking-change signal"
-      fix: "Either keep gem 'multi_json' in the Gemfile, or migrate callers to core JSON: obj.to_json and JSON.parse(str). Do NOT blindly replace with JSON.dump/JSON.load — those are unsafe for arbitrary objects"
+        - "spec/"
+        - "test/"
+      explanation: "Rails 4.1 no longer depends on the multi_json gem. Code that references its MultiJson constant (calls, rescue clauses, adapter setup such as MultiJson.use(:oj) in an initializer) raises NameError once Rails stops pulling the gem in, including request and controller specs that parse response bodies with it. The Gemfile is not searched: `gem 'multi_json'` is the fix, not a breaking-change signal"
+      fix: "Either keep `gem 'multi_json'` in the Gemfile (the only choice that keeps a MultiJson.use / MultiJson.engine adapter setting meaningful), or migrate callers to core JSON. MultiJson.load / MultiJson.decode(str) becomes JSON.parse(str), with symbolize_keys: true renamed to symbolize_names: true (JSON.parse ignores symbolize_keys: and returns string keys). multi_json's json adapter also passed quirks_mode: true, so on json 1.x a bare scalar body ('42', 'null') needs JSON.parse(str, quirks_mode: true). MultiJson.dump / MultiJson.encode(obj) becomes obj.to_json, and dump(obj, pretty: true) becomes JSON.pretty_generate(obj). rescue MultiJson::ParseError / DecodeError / LoadError becomes rescue JSON::ParserError. Do not replace calls with JSON.dump / JSON.load: those are the json gem's object (de)serializers and are unsafe on untrusted input"
       variable_name: "MULTI_JSON"
 
     - name: "ActiveRecord::Relation mutator calls"
@@ -298,7 +300,7 @@ dependencies:
   multi_json:
     check: false
     gem_name: "multi_json"
-    message: "Add to Gemfile only if the app still calls MultiJSON.dump / MultiJSON.load directly — Rails 4.1 no longer pulls it in"
+    message: "Add to Gemfile only if the app still calls MultiJson.dump / MultiJson.load directly. Rails 4.1 no longer pulls it in"
     url: "https://github.com/intridea/multi_json"
 
   activerecord-deprecated_finders:
