@@ -1079,7 +1079,6 @@ Cross-check against [RailsDiff 4.0.13 → 4.1.16](http://railsdiff.org/4.0.13/4.
 19. Move `:confirm` on `link_to` / `button_to` / `button_tag` / `submit_tag` / `f.submit` / `f.button` under `data: { confirm: ... }`.
 20. Switch `include AbstractController::Layouts` / `ViewPaths` to `ActionView::Layouts` / `ViewPaths` (branch on `NextRails.next?` while both versions boot).
 21. Upgrade `acts_as_list` below 0.3.0 (check the lockfile) to `~> 0.7.7`.
-
 22. Wrap every non-callable `scope` body in a lambda (`scope :active, -> { where(active: true) }`).
 23. Pass a block to every `default_scope` that takes a relation or a hash (`default_scope { where(deleted_at: nil) }`).
 24. Rename any scope whose name matches an Active Record class method (`none`, `all`, `count`, ...), or delete it if the built-in does the same job.
@@ -1120,7 +1119,6 @@ Error → section lookup for the most common errors encountered during this upgr
 | `ArgumentError: Unknown key: :uniq` when a model loads | "Association `:uniq` Option Removed": use `-> { distinct }` |
 | `has_and_belongs_to_many` returns duplicate records | "Association `:uniq` Option Removed": 4.1 drops `:uniq` there without an error, use `-> { distinct }` |
 | `ArgumentError: Unknown key: :readonly` when a model loads | "Association `:readonly` Option Removed": use `-> { readonly }`, or delete `readonly: false` |
-
 | `NoMethodError: undefined method 'call'` when a scope runs | "Scopes With a Non-Callable Body Removed": wrap the body in `-> { ... }` |
 | `ArgumentError: Support for calling #default_scope without a block is removed` when a model loads | "`default_scope` Without a Block Raises": wrap the argument in a block |
 | `ArgumentError: You tried to define a scope named ... but Active Record already defined a class method with the same name` | "Scope Names That Collide with Active Record Class Methods Raise": rename or delete the scope |

@@ -112,7 +112,7 @@ require 'strong_parameters' unless NextRails.next?
 #### Scopes and Association Options Require Lambda
 
 **What Changed:**
-Rails 4.0 deprecates a scope body that is not callable (`scope :active, where(active: true)`). It is still accepted with a deprecation warning, but the stored relation is returned as-is, so conditions chained before the scope are dropped (`Model.where(x: 1).active` runs only the scope's own conditions). Rails 4.1 removes support, and calling such a scope raises `NoMethodError`. Additionally, association options like `:conditions`, `:order`, `:extend`, `:uniq`, and `:finder_sql` that were previously passed as hash options must now be expressed as lambda arguments. This is one of the most impactful changes in a typical Rails 3.2 → 4.0 upgrade.
+Rails 4.0 deprecates a scope body that is not callable (`scope :active, where(active: true)`). It is still accepted with a deprecation warning, but the stored relation is returned as-is, so conditions chained before the scope are dropped (`Model.where(x: 1).active` runs only the scope's own conditions). Rails 4.1 removes support, and calling such a scope raises `NoMethodError`. `default_scope` follows the same timeline: an argument that is not a block or lambda (`default_scope where(deleted_at: nil)`, `default_scope :order => 'name'`) warns on 4.0 and raises `ArgumentError` on 4.1 when the model loads. Additionally, association options like `:conditions`, `:order`, `:extend`, `:uniq`, and `:finder_sql` that were previously passed as hash options must now be expressed as lambda arguments. This is one of the most impactful changes in a typical Rails 3.2 → 4.0 upgrade.
 
 ##### Scopes
 
@@ -1355,7 +1355,7 @@ Error → section lookup for the most common errors encountered during this upgr
 | Error | See |
 |-------|-----|
 | `ActiveModel::ForbiddenAttributesError` | "Strong Parameters (Replaces attr_accessible)" — use `user_params` not `params[:user]` |
-| Scope returns wrong results or errors | "Scopes", under "Scopes and Association Options Require Lambda" — add lambda |
+| `DEPRECATION WARNING: Using #scope without passing a callable object`, or a scope ignores conditions chained before it | "Scopes", under "Scopes and Association Options Require Lambda" — add lambda |
 | `Unknown key: :conditions` | "Association `:conditions` hash → lambda with `where()`", under "Scopes and Association Options Require Lambda" — move to lambda |
 | `No route matches` | "Routes Require HTTP Method" — add HTTP method |
 | A scoped route 404s and `rake routes` shows an extra segment | "A Symbol Passed to Route `scope` Becomes a Path Segment" — drop the Symbol, keep `path:` |
