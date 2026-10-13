@@ -20,6 +20,11 @@ Codex discovers local skills under `.agents/skills/` in the app or
 Claude plugin skills use `/dual-boot:dual-boot`,
 `/rails-load-defaults:rails-load-defaults` and `/upgrade-cleanup:upgrade-cleanup`.
 These are user invocation forms, not shell commands or mandatory tool names.
+Codex plugin installations also expose namespaced catalog entries. Use
+`$dual-boot:dual-boot`, `$rails-load-defaults:rails-load-defaults` and
+`$upgrade-cleanup:upgrade-cleanup`, or select their installed catalog entries.
+Match both the skill name and its plugin namespace when resolving a handoff;
+do not report a companion missing merely because no bare local name exists.
 An agent may invoke a native skill capability, or read the resolved entry point
 and follow it inline. Pass parameters in prose; do not assume argument substitution
 or that a Claude plugin manifest installs a Codex skill.

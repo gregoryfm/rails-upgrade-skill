@@ -28,6 +28,40 @@ We've encountered (and solved) edge cases that don't appear in any documentation
 
 Full upgrades use two companion skills: [rails-load-defaults](https://github.com/ombulabs/claude-code_rails-load-defaults-skill) and [dual-boot](https://github.com/ombulabs/claude-code_dual-boot-skill). Read-only next-hop readiness and breaking-change analysis do not require them. The cleanup skill lives at `upgrade-cleanup/upgrade-cleanup/SKILL.md`. Install the actual inner skill directory for a local install.
 
+### Codex plugins from this fork
+
+The `gregory-rails` marketplace includes `rails-upgrade`, `upgrade-cleanup`,
+`dual-boot` and `rails-load-defaults`. The first two use this checkout's existing
+plugin packages. Companion plugins use pinned upstream commits, so installing
+the catalog does not silently select a newer procedure.
+
+To install the PR revision from your terminal:
+
+```bash
+codex plugin marketplace add gregoryfm/rails-upgrade-skill --ref gm/codex-claude-compatibility
+codex plugin add rails-upgrade@gregory-rails
+codex plugin add upgrade-cleanup@gregory-rails
+codex plugin add dual-boot@gregory-rails
+codex plugin add rails-load-defaults@gregory-rails
+codex plugin list --marketplace gregory-rails --json
+```
+
+After merging this PR, use `--ref main` instead. To test a local checkout,
+register its absolute directory with `codex plugin marketplace add
+/absolute/path/to/rails-upgrade-skill`. Marketplace paths resolve from that
+checkout root, including cleanup's outer plugin directory.
+
+Restart Codex, open a new chat in the Rails app, and select the installed skill.
+The Plugins directory can also install plugins from the registered marketplace.
+These commands change your Codex settings when you run them. The installation
+test for this PR used a disposable container and did not run them on the host.
+
+The catalog is at `.agents/plugins/marketplace.json`. Codex supports the
+existing Claude-compatible manifests through its plugin loader; no workflow
+copies or Codex-only manifests are needed. This is a private marketplace route,
+not publication in the public plugin directory. See the
+[official packaging documentation](https://developers.openai.com/plugins/build/plugins#marketplace-metadata).
+
 ### Codex or Claude Code local skills
 
 From a checkout of the revision you want to use, prepare the companion sources:
@@ -65,8 +99,9 @@ cp -R /tmp/rails-upgrade-load-defaults/rails-load-defaults "$RAILS_SKILLS_DEST/r
 Start a new session in the Rails app. Codex discovers `.agents/skills` and
 `~/.agents/skills`; Claude Code discovers `.claude/skills` and `~/.claude/skills`.
 Confirm the four skills appear. If multiple installed versions share a name,
-select the intended entry point. A `.claude-plugin/plugin.json` manifest is a
-Claude package; it does not install a local Codex skill.
+select the intended entry point. Copying a `.claude-plugin/plugin.json` file does
+not install a local Codex skill; the plugin loader uses it when you install the
+package through a marketplace.
 
 ### Claude Code plugins
 
@@ -112,6 +147,7 @@ Open the intended Rails app directory in either harness. Explicit invocation:
 | Installation | Upgrade | Cleanup |
 |--------------|---------|---------|
 | Codex local | `$rails-upgrade Upgrade this app to Rails 7.2` | `$upgrade-cleanup Keep next and clean up dual-boot` |
+| Codex plugin | `$rails-upgrade:rails-upgrade Upgrade this app to Rails 7.2` | `$upgrade-cleanup:upgrade-cleanup Keep next and clean up dual-boot` |
 | Claude Code local | `/rails-upgrade Upgrade this app to Rails 7.2` | `/upgrade-cleanup Keep current and abandon this hop` |
 | Claude Code plugin | `/rails-upgrade:rails-upgrade Upgrade this app to Rails 7.2` | `/upgrade-cleanup:upgrade-cleanup Keep next and clean up dual-boot` |
 

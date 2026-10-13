@@ -1,0 +1,58 @@
+{
+  "name": "gregory-rails",
+  "interface": {
+    "displayName": "Gregory Rails"
+  },
+  "plugins": [
+    {
+      "name": "rails-upgrade",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "upgrade-cleanup",
+      "source": {
+        "source": "local",
+        "path": "./upgrade-cleanup"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "dual-boot",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/ombulabs/claude-code_dual-boot-skill.git",
+        "sha": "1e8a04d1691217ec19b61c817c7aec6e6bbde6e8"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "rails-load-defaults",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/ombulabs/claude-code_rails-load-defaults-skill.git",
+        "sha": "b2024f1c069bda9f631e26e9e776a05cd3e4bd16"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

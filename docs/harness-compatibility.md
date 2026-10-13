@@ -11,8 +11,9 @@ Companions are loaded from their actual installed entry points and keep the
 parent request's mutation limits. Repository maintenance rules live in
 `AGENTS.md`; Claude's maintenance entry point imports that file.
 
-The Claude plugin identities and manifests are unchanged. Codex uses local
-skills; no Claude manifest or global tool mapping is needed. Detection scripts,
+The Claude plugin identities and manifests are unchanged. Codex supports local
+skills and installs the existing packages through the `gregory-rails` marketplace.
+No global tool mapping is needed. Detection scripts,
 pattern files, report templates, supported versions and upgrade order are unchanged.
 
 ## Material issues and corrections
@@ -70,6 +71,11 @@ not overwrite installed skills or global configuration.
 
 ## Companion source checks
 
+The marketplace at `.agents/plugins/marketplace.json` exposes both local
+packages and the two companion plugins below. Its companion entries pin the
+audited commits. The offline compatibility check resolves local installations
+from the catalog and verifies the pinned source URLs and installation policies.
+
 Temporary read-only source checkouts:
 
 - `dual-boot`: `1e8a04d1691217ec19b61c817c7aec6e6bbde6e8`
@@ -80,6 +86,44 @@ that can be followed inline. Codex and Claude discovery accepts both packages.
 Handoffs pass app/version/test state and permissions rather than assuming Claude
 argument substitution. No external repository was modified or published.
 Full companion execution is unverified while paired runtime testing is blocked.
+
+## Codex marketplace installation
+
+The follow-up marketplace test ran Codex CLI 0.162.1 inside a disposable
+`node:22-bookworm-slim` container. Only this repository was mounted read-only;
+temporary evidence was writable. The container had its own default home and
+Codex configuration, with no host settings, credentials or installed plugins
+mounted. No model authentication was needed for installation or discovery.
+
+Actual commands succeeded:
+
+```text
+codex plugin marketplace add /repo --json
+codex plugin add rails-upgrade@gregory-rails --json
+codex plugin add upgrade-cleanup@gregory-rails --json
+codex plugin add dual-boot@gregory-rails --json
+codex plugin add rails-load-defaults@gregory-rails --json
+codex plugin list --marketplace gregory-rails --json
+```
+
+All four were installed and enabled. Installed package versions were 4.1.0,
+0.1.0, 1.0.0 and 1.1.0 respectively. App-server discovery loaded these exact
+catalog names from the installed cache:
+
+```text
+rails-upgrade:rails-upgrade
+upgrade-cleanup:upgrade-cleanup
+dual-boot:dual-boot
+rails-load-defaults:rails-load-defaults
+```
+
+The cached scanner returned the expected Rails 4.0 -> 4.1 hop and dynamic-finder
+site at `app/models/widget.rb:3`. The cached gem-limit script succeeded. Cleanup
+and dual-boot workflows, plus defaults configs and templates, were present in
+their installed packages. The test container was removed after execution.
+Host Codex config and personal marketplace fingerprints matched before and
+after the test. This proves actual package installation, resource availability
+and no-model discovery; paired model workflow execution remains unverified.
 
 ## Existing policy conflicts
 

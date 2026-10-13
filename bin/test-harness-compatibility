@@ -12,9 +12,13 @@ require "tmpdir"
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
-SOURCES = {
+CANONICAL_SKILLS = {
   "rails-upgrade" => File.join(ROOT, "rails-upgrade"),
   "upgrade-cleanup" => File.join(ROOT, "upgrade-cleanup", "upgrade-cleanup")
+}.freeze
+COMPANION_SOURCES = {
+  "dual-boot" => ["https://github.com/ombulabs/claude-code_dual-boot-skill.git", "1e8a04d1691217ec19b61c817c7aec6e6bbde6e8"],
+  "rails-load-defaults" => ["https://github.com/ombulabs/claude-code_rails-load-defaults-skill.git", "b2024f1c069bda9f631e26e9e776a05cd3e4bd16"]
 }.freeze
 
 def check(description)
@@ -63,6 +67,40 @@ def native_schema_lines(text)
 end
 
 begin
+  catalog = JSON.parse(File.read(File.join(ROOT, ".agents/plugins/marketplace.json")))
+  plugins = catalog.fetch("plugins")
+  check("marketplace exposes exactly four unique plugin identities") do
+    catalog.fetch("name") == "gregory-rails" &&
+      plugins.map { |plugin| plugin.fetch("name") }.sort == (CANONICAL_SKILLS.keys + COMPANION_SOURCES.keys).sort
+  end
+  plugins.each do |plugin|
+    check("#{plugin.fetch('name')} catalog has install policy and category") do
+      plugin.fetch("policy") == { "installation" => "AVAILABLE", "authentication" => "ON_INSTALL" } &&
+        plugin.fetch("category") == "Productivity"
+    end
+  end
+  COMPANION_SOURCES.each do |name, (url, sha)|
+    source = plugins.find { |plugin| plugin.fetch("name") == name }.fetch("source")
+    check("#{name} uses the audited companion repository and immutable commit") do
+      source == { "source" => "url", "url" => url, "sha" => sha } && source.fetch("sha").match?(/\A[0-9a-f]{40}\z/)
+    end
+  end
+  local_plugins = plugins.select { |plugin| CANONICAL_SKILLS.key?(plugin.fetch("name")) }.to_h do |plugin|
+    name = plugin.fetch("name")
+    source = plugin.fetch("source")
+    check("#{name} catalog source is a local repository path") { source.fetch("source") == "local" }
+    plugin_root = File.realpath(File.expand_path(source.fetch("path"), ROOT))
+    manifest_path = File.join(plugin_root, ".claude-plugin/plugin.json")
+    manifest = JSON.parse(File.read(manifest_path))
+    skill = File.realpath(File.expand_path(manifest.fetch("skills"), plugin_root))
+    check("#{name} catalog and manifest resolve to canonical skill") do
+      manifest.fetch("name") == name && skill == File.realpath(CANONICAL_SKILLS.fetch(name)) &&
+        skill.start_with?("#{plugin_root}/") &&
+        (plugin_root == ROOT || plugin_root.start_with?("#{ROOT}/"))
+    end
+    [name, { manifest: manifest_path, skill: skill }]
+  end
+  sources = local_plugins.transform_values { |plugin| plugin.fetch(:skill) }
   Dir.mktmpdir("rails harness compatibility ") do |temporary|
     temporary = File.realpath(temporary)
     app = File.join(temporary, "Rails app with spaces")
@@ -87,22 +125,19 @@ begin
 
     installs = {}
     %w[.agents .claude].each do |harness|
-      installs[harness] = SOURCES.to_h do |name, source|
+      installs[harness] = sources.to_h do |name, source|
         destination = File.join(app, harness, "skills", name)
         copy_skill(source, destination)
         [name, destination]
       end
     end
 
-    installs["Claude plugins"] = SOURCES.to_h do |name, source|
-      plugin_source = name == "rails-upgrade" ? ROOT : File.join(ROOT, "upgrade-cleanup")
-      manifest_path = File.join(plugin_source, ".claude-plugin/plugin.json")
+    installs["Marketplace plugins"] = local_plugins.to_h do |name, package|
+      source = package.fetch(:skill)
+      manifest_path = package.fetch(:manifest)
       manifest = JSON.parse(File.read(manifest_path))
       relative_skill = manifest.fetch("skills")
-      check("#{name} manifest resolves to canonical skill") do
-        File.realpath(File.expand_path(relative_skill, plugin_source)) == File.realpath(source)
-      end
-      plugin = File.join(temporary, "Claude plugins with spaces", name)
+      plugin = File.join(temporary, "Marketplace plugins with spaces", name)
       write(File.join(plugin, ".claude-plugin/plugin.json"), File.read(manifest_path))
       destination = File.expand_path(relative_skill, plugin)
       raise "plugin skill escapes its root" unless destination.start_with?("#{plugin}/")
@@ -118,7 +153,7 @@ begin
 
     installs.each do |label, skills|
       skills.each do |name, skill|
-        check("#{label}: #{name} installed resource bytes match source") { tree(skill) == tree(SOURCES.fetch(name)) }
+        check("#{label}: #{name} installed resource bytes match source") { tree(skill) == tree(sources.fetch(name)) }
         document = File.read(File.join(skill, "SKILL.md"))
         frontmatter = YAML.safe_load(document[/\A---\n(.*?)\n---/m, 1])
         check("#{label}: #{name} name and description parse") do
@@ -135,7 +170,7 @@ begin
       check("#{label}: cleanup workflow resolves from installed skill") do
         File.read(File.join(cleanup, "SKILL.md")).include?("workflows/upgrade-cleanup-workflow.md") &&
           File.binread(File.join(cleanup, "workflows/upgrade-cleanup-workflow.md")) ==
-            File.binread(File.join(SOURCES.fetch("upgrade-cleanup"), "workflows/upgrade-cleanup-workflow.md"))
+            File.binread(File.join(sources.fetch("upgrade-cleanup"), "workflows/upgrade-cleanup-workflow.md"))
       end
     end
 
