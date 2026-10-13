@@ -8,7 +8,7 @@
 
 ## Inputs
 
-- `tmp/pattern-scan.json` from Workflow 05: every pattern's status, `kind`, `priority`, explanation, fix, `prereqs:` and sites with file:line, plus a `summary` block with the counts; or, when the scanner did not run, Workflow 05's Grep findings
+- `tmp/pattern-scan.json` from Workflow 05: every pattern's status, `kind`, `priority`, explanation, fix, `prereqs:` and sites with file:line, plus a `summary` block with the counts; or, when the scanner did not run, Workflow 05's manual search findings
 - Workflow 05's findings review note: dropped false positives and prereq gem bumps
 - Exact current and target versions, patch status (from Workflow 00), baseline suite numbers (from Workflow 01)
 - `version-guides/upgrade-{FROM}-to-{TO}.md` and `templates/upgrade-report-template.md`
@@ -38,7 +38,7 @@ Collect, without re-deriving anything:
 | Workflow 00 | exact current version, whether it is the latest patch |
 | Workflow 01 | test count, assertions, failures on the current version |
 | Workflow 02 | deprecation inventory: fixed entries; entries deferred to the bump (setter removed on {TO}); entries deferred to a later hop or owned by a gem |
-| Workflow 05 | `tmp/pattern-scan.json`: `summary` (patterns checked and fired, sites, files, counts by kind, `unscanned`, `suppressed`) and one entry per pattern with `status`, `bucket`, `kind`, `priority`, `explanation`, `fix`, `sites`, `guide_entry`. Only `status: "found"` entries become findings. Check that its `to` is this report's {TO}; a file from another hop is stale, rerun Workflow 05 Step 2. Plus the findings review note: dropped false positives, prereq gem bumps, anything found by hand. When there is no JSON (Grep fallback, or a hop with no patterns file), use Workflow 05's Grep findings and count patterns from the patterns file |
+| Workflow 05 | `tmp/pattern-scan.json`: `summary` (patterns checked and fired, sites, files, counts by kind, `unscanned`, `suppressed`) and one entry per pattern with `status`, `bucket`, `kind`, `priority`, `explanation`, `fix`, `sites`, `guide_entry`. Only `status: "found"` entries become findings. Check that its `to` is this report's {TO}; a file from another hop is stale, rerun Workflow 05 Step 2. Plus the findings review note: dropped false positives, prereq gem bumps, anything found by hand. When there is no JSON (search fallback, or a hop with no patterns file), use Workflow 05's manual search findings and count patterns from the patterns file |
 | Workflow 06 | gem buckets: required bumps, blockers, already compatible; which check ran |
 | Workflow 07 | boot smoke block, gem bumps found at boot, suite result under `Gemfile.next` and its failures, and every `DEPRECATION WARNING` line {TO} emitted at boot or during the suite |
 | Workflow 04 | what changed in the working tree (Gemfile, lockfiles), committed or not |
@@ -47,11 +47,11 @@ Everything in the report comes from these. If a run skipped a workflow (request 
 
 ## Step 2: Load the version guide
 
-For each finding take the guide entry's "What Changed" text and its BEFORE / AFTER fix from `version-guides/upgrade-{FROM}-to-{TO}.md`. Do not read the whole guide: `ruby <skill>/detection-scripts/scan_patterns.rb --explain VAR1,VAR2` prints the patterns' explanation and fix and, for each pattern whose guide entry carries its `**Pattern:**` marker, the entry text itself (the JSON `guide_entry` gives the same entry's line range). For a guide without markers it prints a line-numbered index of the guide's entries instead, so read each needed entry with `offset` / `limit`. The guide's Common Issues section (also in the index) maps a test failure or a warning text back to an entry by symptom; read it when a Workflow 07 failure or warning needs an entry.
+For each finding take the guide entry's "What Changed" text and its BEFORE / AFTER fix from `version-guides/upgrade-{FROM}-to-{TO}.md`. Do not read the whole guide: `ruby "<skill>/detection-scripts/scan_patterns.rb" --explain VAR1,VAR2` prints the patterns' explanation and fix and, for each pattern whose guide entry carries its `**Pattern:**` marker, the entry text itself (the JSON `guide_entry` gives the same entry's line range). For a guide without markers it prints a line-numbered index of the guide's entries instead, so read each needed entry by line range. The guide's Common Issues section (also in the index) maps a test failure or a warning text back to an entry by symptom; read it when a Workflow 07 failure or warning needs an entry.
 
 ## Step 3: Read the affected files
 
-For every file:line in the findings, read around that line (`offset` / `limit`) so the report shows the user's actual code, never a generic example; read the whole file only when the change depends on more of it. When a pattern has many sites, quote a few representative ones in the block and list the rest in Affected files. When the quoted lines hold a secret value (a key, token or password, anything read from `ENV` or from a secrets or credentials file), keep the key name and replace the value with `<redacted>`; the report may be committed or shared.
+For every file:line in the findings, read around that line with a native reader or shell read so the report shows the user's actual code, never a generic example; read the whole file only when the change depends on more of it. When a pattern has many sites, quote a few representative ones in the block and list the rest in Affected files. When the quoted lines hold a secret value (a key, token or password, anything read from `ENV` or from a secrets or credentials file), keep the key name and replace the value with `<redacted>`; the report may be committed or shared.
 
 ## Step 4: Load the template
 

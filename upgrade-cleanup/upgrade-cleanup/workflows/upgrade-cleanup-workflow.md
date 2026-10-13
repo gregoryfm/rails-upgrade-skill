@@ -2,6 +2,8 @@
 
 Run when the user is done with the upgrade campaign and wants to remove dual-boot scaffolding. Aligns the codebase to the new version baseline.
 
+Use the Execution Context in this skill's `SKILL.md`: load this workflow from the installed skill directory and run every app operation in the confirmed app directory. Use native tools for the required actions. Ask each required question or approval through a native question tool or ordinary chat and wait for the answer before proceeding with the dependent step.
+
 Based on FastRuby.io's [Finishing an Upgrade](https://www.fastruby.io/blog/finishing-an-upgrade.html) methodology. Rule of thumb: **never start the next hop with `NextRails.next?` branches still in the tree.** They accumulate, lose context, and make the next dual-boot impossible to reason about.
 
 ---
@@ -35,7 +37,7 @@ Before any destructive step, ask the user which side they want to keep. Do not i
 
 > *"Are we cleaning up because the upgrade succeeded and you want to keep the **next** version, or because you're abandoning/pausing this hop and want to keep the **current** version?"*
 
-Record the answer as **keep next** or **keep current**. Every later step in this workflow branches on that label — Phase 1 onward spells out what each path does. If the user is unsure, stop and clarify. Don't guess from repo signals, both sides may look healthy.
+Wait for the answer and record it as **keep next** or **keep current**. Every later step in this workflow branches on that label — Phase 1 onward spells out what each path does. If the user is unsure, stop and clarify. Don't guess from repo signals, both sides may look healthy.
 
 ### Step 2: Detect how the app runs
 
@@ -95,10 +97,7 @@ This skill owns these steps. The `dual-boot` skill's `workflows/cleanup-workflow
 
 Each step indicates the action for **keep next** vs **keep current**, per Phase 0 Step 1. The two paths are symmetric: whichever branch is kept becomes unconditional code.
 
-1. Find all `NextRails.next?` and `NextRails.current?` references:
-   ```sh
-   grep -rE "NextRails\.(next|current)\?" . --include="*.rb" -l
-   ```
+1. Search the app's Ruby files for all `NextRails.next?` and `NextRails.current?` references and collect the matching file paths. Use a native file search or an available shell search command. Exclude vendored gems and `vendor/bundle/`; do not search or edit the installed skill as though it were application code.
    Both helpers ship with the `next_rails` gem and need to be removed regardless of direction.
 2. Collapse the conditionals based on direction:
    - **Keep next:** keep the `if NextRails.next?` true branch, drop the `else`. Drop `if NextRails.current?` blocks entirely. Ternaries collapse to their `next?`-true value (e.g. `config.load_defaults NextRails.next? ? 8.0 : 7.0` → `config.load_defaults 8.0`).
@@ -108,9 +107,7 @@ Each step indicates the action for **keep next** vs **keep current**, per Phase 
    - **Keep next:** keep the next-version gems (the `if next?` branch).
    - **Keep current:** keep the current-version gems (the `else` branch).
 5. **Before removing `next_rails`, sweep for `deprecation_tracker` residue.** The gem ships a `DeprecationTracker` library that projects often wire into RSpec setup. If you remove the gem first, the test boot blows up with `LoadError: cannot load such file -- deprecation_tracker` and you discover the residue by failure. Cheaper to detect it up front and tear it down alongside the gem:
-   ```sh
-   grep -rnE "deprecation_tracker|DeprecationTracker|DEPRECATION_TRACKER" spec/ test/ 2>/dev/null
-   ```
+   Search the app's existing `spec/` and `test/` directories for `deprecation_tracker`, `DeprecationTracker`, and `DEPRECATION_TRACKER`, recording matching paths and lines. A missing test directory is not a search failure; permission or tool failures are not evidence that no references exist.
    Drop any `require "deprecation_tracker"`, `DeprecationTracker.track_rspec(...)` (often gated on `ENV["DEPRECATION_TRACKER"]`), and the associated `spec/support/deprecation_warning.shitlist.json` if it exists. Skip this sweep if the user opted to keep `next_rails`.
 6. Remove the `next_rails` gem from the `Gemfile` (both directions). If the user wants to keep `next_rails` for the next hop, skip this step and tell them.
 7. Reconcile lockfiles based on direction. Either path leaves both `Gemfile.next` and `Gemfile.next.lock` gone from the tree:
@@ -135,10 +132,7 @@ Beyond `NextRails` branches, hunt for version-conditional code that no longer ap
    - **Keep next:** loosen pins held back for current-version compatibility, the constraint is gone.
    - **Keep current:** revert any pins that were bumped in anticipation of the next version, if they break the current version.
 3. **Conditional `Gemfile` groups.** Drop groups keyed off the version being dropped (direction-symmetric: keep next → drop current-version groups; keep current → drop next-version groups).
-4. **`docker-compose.yml` / `compose.yaml` sister services.** Dual-boot setups commonly add a parallel service (e.g. `web-next`, `worker-next`) that sets `BUNDLE_GEMFILE: Gemfile.next` and reuses the primary service via YAML anchors. These break once `Gemfile.next` is gone. Grep both compose files:
-   ```sh
-   grep -nE "BUNDLE_GEMFILE.*Gemfile\.next|-next:" docker-compose.yml compose.yaml 2>/dev/null
-   ```
+4. **`docker-compose.yml` / `compose.yaml` sister services.** Dual-boot setups commonly add a parallel service (e.g. `web-next`, `worker-next`) that sets `BUNDLE_GEMFILE: Gemfile.next` and reuses the primary service via YAML anchors. These break once `Gemfile.next` is gone. Search each existing compose file in the app for `BUNDLE_GEMFILE` pointing to `Gemfile.next` and service definitions ending in `-next`, recording matching lines. Inspect the service definitions before changing them.
    - **Keep next:** drop the `*-next` service definitions; if the *primary* service was the one carrying `BUNDLE_GEMFILE: Gemfile.next`, unset that env var instead of deleting the service.
    - **Keep current:** drop the `*-next` service definitions outright.
 5. **Documentation drift.** Sweep `README.md`, `CONTRIBUTING.md`, `bin/setup`, setup scripts, `.tool-versions`, and `Dockerfile` for stale Ruby/Rails references.
@@ -164,7 +158,7 @@ Before declaring cleanup done:
 
 - [ ] Test suite passes on the kept version (no dual-boot, single Gemfile)
 - [ ] CI is green on the cleanup branch
-- [ ] `grep -rE "NextRails\.(next|current)\?" . --include="*.rb"` returns nothing
+- [ ] A completed search of the app's Ruby files finds no `NextRails.next?` or `NextRails.current?` references (excluding vendored gems and `vendor/bundle/`)
 - [ ] `Gemfile.next` and `Gemfile.next.lock` are gone
 - [ ] No leftover `next_rails` gem in `Gemfile` (unless explicitly kept for the next hop)
 - [ ] Documentation reflects the kept Ruby/Rails versions (keep next → new baseline; keep current → unchanged from before the upgrade attempt)
@@ -198,10 +192,10 @@ Keep them as separate commits so reviewers can see each cleanup pass in isolatio
 
 ---
 
-## Notes for Claude
+## Notes for Agents
 
 - **Direction first, always.** Never start collapsing branches before Phase 0 Step 1 has settled next vs current. Both sides may look healthy in the repo; only the user knows which one is the goal.
-- Treat every destructive step (`rm`, lockfile replacement, gem removal, CI edits) as needing user confirmation. The workflow is reversible only via git, so move slowly.
+- Treat every destructive step (`rm`, lockfile replacement, gem removal, CI edits) as needing user confirmation. Ask with a native question tool or ordinary chat and wait for the answer. The workflow is reversible only via git, so move slowly.
 - If `Gemfile.next.lock` does not exist, dual-boot was never set up or is already cleaned. Skip Phase 1 and tell the user.
 - If `NextRails.next?` or `NextRails.current?` references appear inside vendored gems or `vendor/bundle/`, ignore them. Only application code matters.
 - When keeping next, detect the target version from the `Gemfile`'s `if NextRails.next?` block or `Gemfile.next.lock`, not `Gemfile.lock`, which still holds the current version during dual-boot.

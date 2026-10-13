@@ -1,6 +1,6 @@
 # Workflow 05: Detect Breaking Changes
 
-**Purpose:** Run every detection pattern for the hop with `detection-scripts/scan_patterns.rb`, then read the affected files with Claude's tools (Read, Grep, Glob)
+**Purpose:** Run every detection pattern for the hop with `detection-scripts/scan_patterns.rb`, then read the affected files using native file and search operations
 
 **When to use:** Workflow 05 of the upgrade workflow — after tests pass and the upgrade path is validated. (load_defaults alignment is Workflow 12, *after* detection, not before.)
 
@@ -17,7 +17,7 @@
 
 ## Gates (must be true before the next workflow that runs)
 
-- Every pattern in the patterns file searched: by `detection-scripts/scan_patterns.rb`, or by hand with the Grep tool when the script cannot run
+- Every pattern in the patterns file searched: by `detection-scripts/scan_patterns.rb`, or by hand with a native content search when the script cannot run
 - Every UNSCANNED entry the script reports is either confirmed absent from this app or searched by hand
 
 ---
@@ -26,7 +26,7 @@
 
 ### Step 1: Load Pattern File
 
-When the scanner runs (Step 2), skip reading this file: the scanner loads it, and its output carries each pattern's name, kind, priority, explanation and fix. Read it only for the Grep fallback, or to look at one pattern's regex; the JSON carries `prereqs:` too. The version-specific pattern file:
+When the scanner runs (Step 2), skip reading this file: the scanner loads it, and its output carries each pattern's name, kind, priority, explanation and fix. Read it only for the search fallback, or to look at one pattern's regex; the JSON carries `prereqs:` too. The version-specific pattern file:
 
 ```
 detection-scripts/patterns/rails-{VERSION}-patterns.yml
@@ -43,7 +43,7 @@ The pattern file contains:
 - `upgrade_findings.low_priority` - Lower-urgency patterns to search
 - Each pattern has: `name`, `kind`, `pattern`, `search_paths`, `explanation`, `fix`, `variable_name`
 - Each pattern may optionally declare `prereqs:` — a list of gem-version floors that must be in place for the suggested `fix:` to actually work. See "The `prereqs:` field" below.
-- `kind` is one of `breaking` / `deprecation` / `migration` / `optional` — see `CLAUDE.md` → "Assigning `kind:`" for the rubric. The bucket each finding lands in (see Step 4 / Output Format) is driven by `kind`, not by priority.
+- `kind` is one of `breaking` / `deprecation` / `migration` / `optional`. The bucket each finding lands in (see Step 4 / Output Format) is driven by `kind`, not by priority; their runtime meanings are defined in Step 4 below.
 
 #### The `prereqs:` field (optional)
 
@@ -90,8 +90,8 @@ This makes the cascade explicit in the report — readers see "bump rspec-rails 
 From the app root, run the scanner with the app's Ruby (it is stdlib only and runs on Ruby 2.1 and later, so no Bundler is needed):
 
 ```bash
-ruby <skill>/detection-scripts/scan_patterns.rb --format json --output tmp/pattern-scan.json
-ruby <skill>/detection-scripts/scan_patterns.rb --summary
+ruby "<skill>/detection-scripts/scan_patterns.rb" --format json --output tmp/pattern-scan.json
+ruby "<skill>/detection-scripts/scan_patterns.rb" --summary
 ```
 
 The JSON file is the record Workflow 08 reads. `--output` creates `tmp/` if the app has none, deletes any earlier file first and writes the new one only when the scan succeeds, so after a failed run there is no file rather than a stale or empty one. Read the `--summary` output here, not the full detail: on a large app the full markdown runs to tens of thousands of tokens. For the per-site table of the patterns that fired, run `--only VAR1,VAR2` for a few at a time.
@@ -110,13 +110,13 @@ Flags: `--summary` prints only the summary and the status lists; `--only VAR1,VA
 
 The scanner matches against file content, so a call split across lines is found when the pattern is written to cross newlines. It also searches Packwerk packs, engines and components (`app/models/` also reaches `packs/*/app/models/`) and skips `node_modules` anywhere and `vendor`, `tmp` and `log` at the app or pack root, unless a search_path names them. A site that spans lines is reported as `file:start-end`.
 
-If Ruby cannot run in the app's environment at all, fall back to the Grep tool: for every pattern in `upgrade_findings.high_priority`, `medium_priority` and `low_priority`, run one Grep per search_path with `output_mode: "content"` and `-n: true`, then drop lines that match `exclude:`. Grep is line-based, so its counts are a floor for patterns that span lines. Grep rejects look-around (`(?=`, `(?!`, `(?<=`, `(?<!`) and, without `multiline: true`, a `\n`, with a parse error rather than zero hits: split such a pattern at its top-level `|`, drop the look-around from the alternatives that carry it, and read each of the broader hits.
+If Ruby cannot run in the app's environment at all, use a native content search: for every pattern in `upgrade_findings.high_priority`, `medium_priority` and `low_priority`, search each `search_path`, retaining matching content, filenames and line numbers, then drop lines matching `exclude:`. Resolve app paths, including packs, engines and components, as the scanner does. Line-based counts are a floor for patterns spanning lines. Check the search engine's regex and multiline support: an unsupported look-around (`(?=`, `(?!`, `(?<=`, `(?<!`) or `\n` is a search error, never zero hits. If needed, split at a top-level `|`, broaden unsupported alternatives, then read each hit to check the original condition. Record this fallback and its limits; do not present it as equivalent to a successful whole-file scan.
 
 ---
 
 ### Step 3: Check What the Scanner Could Not See
 
-- **UNSCANNED** is "could not scan", not "clean". For each one, confirm the path does not exist in this app (a Gemfile-only pattern in an app without that file) or Grep the app's real layout by hand.
+- **UNSCANNED** is "could not scan", not "clean". For each one, confirm the path does not exist in this app (a Gemfile-only pattern in an app without that file) or search the app's real layout by hand.
 - **Suppressed by exclude**: `exclude:` is tested on the lines a match spans, so a real hit that shares a line with the excluded form is dropped with it. Re-run with `--show-suppressed` when the count is non-zero and look at any entry whose excluded form can sit next to a real hit.
 - **False positives**: a pattern flags text, not behavior. Read the matched line before carrying a site into the report (Step 5), and drop sites that are not the API the pattern describes (a method that only shares a name prefix, a comment, a string). Record each dropped site (pattern, file:line, why) in the findings review note; do not edit the JSON. Workflow 08 reports the kept sites and says how many were dropped.
 
@@ -186,68 +186,29 @@ A HIGH `deprecation` (silently wrong, like `DIRTY_TRACKING_AFTER_SAVE`) lands in
 
 Pull context per finding, not in bulk:
 
-- What the change is: `--explain VAR` (explanation, fix, prereqs, and the guide entry itself when the guide names the pattern in a `**Pattern:**` marker). The markdown report also shows a `Guide:` line with that entry's line range. For a guide without markers yet, `--explain` lists every entry of `version-guides/upgrade-{FROM}-to-{TO}.md` with its line range instead, so Read only the matching one with `offset` / `limit`.
-- The app's code: read around each site (`offset` / `limit` near the reported line), and the whole file only when the change depends on more of it (an initializer, a model's callbacks).
+- What the change is: `--explain VAR` (explanation, fix, prereqs, and the guide entry itself when the guide names the pattern in a `**Pattern:**` marker). The markdown report also shows a `Guide:` line with that entry's line range. For a guide without markers yet, `--explain` lists every entry of `version-guides/upgrade-{FROM}-to-{TO}.md` with its line range instead, so read only the matching line range.
+- The app's code: read around each site's reported line, and the whole file only when the change depends on more of it (an initializer, a model's callbacks).
 
 Read the app's code to:
 - Understand surrounding code
 - Provide accurate OLD vs NEW examples
 - Identify custom code that needs ⚠️ warnings
 
-Use Read tool:
-```
-Read:
-  file_path: "/path/to/project/config/initializers/assets.rb"
-```
+Use a native file reader or a shell read on the absolute app file path. For example, read the relevant lines of `<app>/config/initializers/assets.rb`.
 
 ---
 
 ### Step 6: Return Findings
 
-Pass `tmp/pattern-scan.json` and the findings review note (dropped false positives, prereq gem bumps from Step 1, anything found by hand in Step 3) to the report generation step. When the scanner could not run (Grep fallback, or a hop with no patterns file), pass the Grep findings compiled as in Step 4 instead, and say why the scanner did not run.
+Pass `tmp/pattern-scan.json` and the findings review note (dropped false positives, prereq gem bumps from Step 1, anything found by hand in Step 3) to the report generation step. When the scanner could not run (search fallback, or a hop with no patterns file), pass the manual findings compiled as in Step 4 instead, and say why the scanner did not run.
 
 ---
 
-## Tool Usage Examples (Grep fallback and Step 5)
+## Native Operation Examples (search fallback and Step 5)
 
-### Using Grep for Pattern Search
+From the app directory, search `config/environments/` for `config\.assets\.` and return content with file:line. A shell example is `rg -n 'config\.assets\.' config/environments/`; a native search is equally valid. If `rg` is unavailable, use an available search with the same regex support and outputs. Apply `exclude:` to the results.
 
-**Search for a specific pattern:**
-```
-Grep:
-  pattern: "config\\.assets\\."
-  path: "config/environments/"
-  output_mode: "content"
-  -n: true
-```
-
-**Search with exclusion (grep -v equivalent):**
-Run the search, then filter results in analysis.
-
-**Search multiple paths:**
-Make separate Grep calls for each path, or use a parent directory.
-
-### Using Glob to Find Files
-
-**Find all Ruby files in config:**
-```
-Glob:
-  pattern: "config/**/*.rb"
-```
-
-**Find specific file types:**
-```
-Glob:
-  pattern: "app/models/**/*.rb"
-```
-
-### Using Read for Full Context
-
-**Read a specific file:**
-```
-Read:
-  file_path: "/absolute/path/to/file.rb"
-```
+List Ruby files under `config/` or `app/models/` with a native path listing or an available shell operation. Include nested and hidden paths when the pattern names them. Read each relevant file or line range with a native reader or a shell read. None of these operations requires a tool with a specific name or argument schema.
 
 ---
 
@@ -275,7 +236,7 @@ upgrade_findings:
       # same structure
 ```
 
-The `kind` field determines the output bucket (fix-before-bump vs fix-when-ready). See `CLAUDE.md` → "Assigning `kind:`" for the full rubric and decision flow.
+The `kind` field determines the output bucket (fix-before-bump vs fix-when-ready), using the meanings in Step 4 above. The pattern's declared kind is authoritative for detection; do not reclassify it based on the harness.
 
 ---
 
@@ -374,8 +335,8 @@ After detection completes:
 
 ## Performance Considerations
 
-- Run the scanner once per hop instead of one Grep call per pattern and path
-- When falling back to Grep, run the calls in parallel (multiple tool calls in one message)
+- Run the scanner once per hop instead of one search per pattern and path
+- When falling back to searches, run independent calls in parallel if supported; otherwise run them sequentially with the same coverage
 - Use specific paths rather than searching entire codebase
 - Limit context lines to what's needed
 - Don't read files unnecessarily - only read what's needed for reports
@@ -394,7 +355,7 @@ Before proceeding to report generation:
 - [ ] Within each bucket, sub-ordered by priority (HIGH → MEDIUM → LOW)
 - [ ] Each finding tagged with both its `kind` and `priority` in the output
 - [ ] Any search errors noted
-- [ ] Scanner run for the right hop (or Grep used for every pattern when it could not run)
+- [ ] Scanner run for the right hop (or native searches used for every pattern when it could not run)
 - [ ] UNSCANNED entries confirmed absent or searched by hand
 - [ ] Context captured for each finding
 

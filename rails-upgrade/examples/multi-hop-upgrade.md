@@ -4,13 +4,15 @@
 
 ---
 
+These examples illustrate reports. Follow the selected workflows and their gates for execution.
+
 ## User Request
 
 "Help me upgrade my Rails app from 5.2 to 8.0"
 
 ---
 
-## Claude Response
+## Assistant Response
 
 ### Important: Sequential Upgrade Required
 

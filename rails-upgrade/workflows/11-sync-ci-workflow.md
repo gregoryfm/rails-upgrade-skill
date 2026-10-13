@@ -21,7 +21,7 @@
 
 ## Step 1: Enumerate CI files
 
-Use Glob to find every CI configuration file in the repo. Check all of these locations — projects commonly have more than one:
+Use a native path listing or shell file search to find every CI configuration file in the app, including hidden directories. Check all of these locations — projects commonly have more than one:
 
 - `.github/workflows/*.yml` and `.github/workflows/*.yaml` (GitHub Actions)
 - `.circleci/config.yml` (CircleCI)

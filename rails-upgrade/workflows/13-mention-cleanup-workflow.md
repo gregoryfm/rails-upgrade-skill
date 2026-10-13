@@ -27,6 +27,8 @@
 
 Delegate to the upgrade-cleanup plugin only when the user explicitly asks ("finish the upgrade", "clean up dual-boot", "drop the NextRails branches")
 
+Use `references/companion-skills-reference.md` to locate and follow the installed cleanup skill. The same nested skill runs as a local skill in Codex or Claude Code and as a Claude plugin. Pass the app directory and existing permissions; its direction and validation gates still apply.
+
 ## Step 3: What cleanup covers
 
 The cleanup plugin removes NextRails.next? / NextRails.current? branches and retires dual-boot scaffolding. Deprecation triage stays with this skill for the next hop, not with cleanup.

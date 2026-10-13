@@ -22,7 +22,7 @@
 
 ## Step 1: Delegate to the dual-boot skill
 
-DELEGATE to the dual-boot skill for setup and initialization.
+Load `references/companion-skills-reference.md`, then follow the installed dual-boot skill for setup and initialization. Pass the app directory, confirmed hop, baseline, deprecation sweep and request-specific mutation limits. Wait for its commands and required user decisions; verify the Outputs and Gates here before continuing.
 That skill handles:
 - Checking if Gemfile.next already exists (to avoid duplicate `next?` method)
 - Adding next_rails gem and running next_rails --init
