@@ -236,7 +236,7 @@ upgrade_findings:
       # same structure
 ```
 
-The `kind` field determines the output bucket (fix-before-bump vs fix-when-ready), using the meanings in Step 4 above. The pattern's declared kind is authoritative for detection; do not reclassify it based on the harness.
+The `kind` field determines the output bucket (fix-before-bump vs fix-when-ready), using the meanings in `workflows/05-detect-breaking-changes-workflow.md` Step 4. The pattern's declared kind is authoritative for detection; do not reclassify it based on the harness.
 
 ---
 
