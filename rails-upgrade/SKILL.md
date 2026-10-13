@@ -5,6 +5,48 @@ description: Analyzes Rails applications and generates comprehensive upgrade rep
 
 # Rails Upgrade Assistant Skill
 
+## Execution rules (Codex and Claude Code)
+
+These rules travel with the installed skill. Repository maintenance instructions
+in `AGENTS.md` or `CLAUDE.md` are not runtime dependencies.
+
+- Resolve `<skill>` to the absolute directory containing this loaded `SKILL.md`.
+  Read bundled workflows, references, guides, patterns and templates relative to
+  that directory, even when installed through a symlink or a Claude plugin.
+  Never search the Rails app for replacement copies of bundled resources.
+- Identify the intended Rails app directory before running commands. If the
+  request and workspace leave more than one app possible, ask and wait. Run app
+  commands with that working directory and its Ruby environment. Quote absolute
+  paths. An app path such as `Gemfile`, `config/` or `tmp/` is relative to the app;
+  a bundled path such as `workflows/` is relative to `<skill>`.
+- Read `references/request-patterns-reference.md` first. Its request-specific
+  routing and mutation limits apply to every selected workflow and companion.
+  Load only the workflow or reference needed at each step. Examples illustrate
+  outputs; they do not replace workflow gates.
+- Use available native tools to read files, list paths, search content, edit
+  files, run commands and fetch sources. A shell equivalent is sufficient;
+  no global tool mapping, named tool, task tracker or subagent is required.
+  Search results must retain filenames and line numbers. Distinguish an empty
+  result from a search error; check regex support before using a fallback.
+- When a workflow requires a question, decision or approval, ask it and wait
+  for the user's answer. Use a native question tool when available; otherwise
+  use ordinary chat. An unavailable tool, timeout or silence is never approval.
+  Carry forward explicit answers within their scope. Do not expand permission
+  to edit, commit, push, publish or deploy when loading another skill.
+- Wait for each command to finish and record its exit status and output before
+  evaluating a gate. Resume a running command through the harness's process
+  handle. A successful `tee` or `grep` does not prove that the preceding tests
+  or boot succeeded: capture the original command's status, using pipefail in
+  a supporting shell or direct output capture. Missing tools, credentials,
+  network or runtime checks are blockers or unverified checks, never passes.
+- On resume, confirm the app, hop, changed files, completed commands and pending
+  answers. Reuse evidence only if its app state and Rails version still match.
+  Preserve unrelated work. If instructions contradict a gate or mutation limit,
+  report the conflict and stop the affected action until it is resolved.
+- Companion handoffs use `references/companion-skills-reference.md`. Native
+  invocation or reading and following the installed companion inline are both
+  valid; a subagent is optional. Missing companions stop only the dependent work.
+
 ## Skill Identity
 - **Name:** Rails Upgrade Assistant
 - **Purpose:** Intelligent Rails application upgrades from 2.3 through 8.1
@@ -102,6 +144,7 @@ When proposing code fixes that must work with both the current and target Rails 
 - **`upgrade-cleanup` companion plugin** - User-triggered. Removes dual-boot scaffolding and drops `NextRails.next?` / `NextRails.current?` branches. Deprecation triage stays with this skill for the next hop.
 
 ### Reference Materials
+- `references/companion-skills-reference.md` - Discovery, invocation and scoped handoffs in either harness. Load before using a companion skill.
 - `references/sequential-strategy-reference.md` - Sequential upgrade rule (no version skipping) and the supported upgrade paths tables. Load in Workflow 03.
 - `references/request-patterns-reference.md` - Which workflows run for each request shape (full upgrade, multi-hop, analysis only, reports only). Read at the start of a session.
 - `references/next-hop-readiness-reference.md` - Read-only answer to "what do I need for the next Rails version?". Load for the Next-Hop Readiness request shape.
@@ -152,7 +195,7 @@ The Purpose column is a summary. Gates live only in each workflow's `## Gates` s
 
 ## Key Principles
 
-1. **Run Detection Directly** (run `detection-scripts/scan_patterns.rb`, then Read the affected files; never generate a detection script for the user to run)
+1. **Run Detection Directly** (run `detection-scripts/scan_patterns.rb`, then read the affected files; never generate a detection script for the user to run)
 2. **Load Workflows as Needed** (don't hold everything in memory)
 3. **Follow FastRuby.io Methodology** (incremental upgrades, assessment first)
 

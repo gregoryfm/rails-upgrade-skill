@@ -66,15 +66,15 @@ Gemfile
 
 ### Step 2: Read Current Configuration
 
-For each configuration file:
+Read each existing app configuration file with a native reader or shell read:
 
 ```
-Read: config/application.rb
-Read: config/environments/production.rb
-Read: config/environments/development.rb
-Read: config/environments/test.rb
-Read: config/database.yml
-Read: Gemfile
+config/application.rb
+config/environments/production.rb
+config/environments/development.rb
+config/environments/test.rb
+config/database.yml
+Gemfile
 ```
 
 Store current contents for comparison.
@@ -83,10 +83,10 @@ Store current contents for comparison.
 
 ### Step 3: Load Version Guide
 
-Read version-specific configuration changes:
+Read version-specific configuration changes from the installed skill directory:
 
 ```
-Read: version-guides/upgrade-{FROM}-to-{TO}.md
+version-guides/upgrade-{FROM}-to-{TO}.md
 ```
 
 Extract the configuration section that details:

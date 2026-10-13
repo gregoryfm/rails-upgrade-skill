@@ -21,8 +21,8 @@
 ## Pre-upgrade checklist (FastRuby.io best practices, recommended before starting any upgrade)
 
 **Test Coverage Assessment (AUTOMATED)**
-- [x] Run test suite - all tests passing? **← Claude runs this automatically**
-- [x] Check test coverage (aim for >70%) **← Claude captures this if SimpleCov is configured**
+- [x] Run test suite - all tests passing? **← The agent runs this automatically**
+- [x] Check test coverage (aim for >70%) **← The agent captures this if SimpleCov is configured**
 - [ ] Review critical paths have coverage
 
 The deprecation-warnings items of the checklist live in `workflows/02-resolve-deprecation-warnings-workflow.md`, which acts on this workflow's Step 2 sweep.

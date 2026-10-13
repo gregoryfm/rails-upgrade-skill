@@ -18,7 +18,7 @@
 
 ## Step 1: Delegate to the rails-load-defaults skill
 
-DELEGATE to the rails-load-defaults skill
+Load `references/companion-skills-reference.md`, then follow the installed rails-load-defaults skill. Pass the app directory, completed hop, baseline, tests and current permissions. Ask and wait at its approval gates; report a missing or incompatible companion before changing defaults.
 
 ## Step 2: Walk through each config change
 

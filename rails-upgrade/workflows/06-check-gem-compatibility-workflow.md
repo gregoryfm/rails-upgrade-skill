@@ -29,7 +29,7 @@
 
 ## First pass: declared limits in the lockfile
 
-Run `ruby <skill>/detection-scripts/gem_limits.rb --target <target>`. It reads only the lockfile (no network, no next_rails) and lists the locked gems whose gemspec excludes the target. Each one lands in required bumps or blockers; the check below says which, and the version to bump to.
+From the app directory, run `ruby "<skill>/detection-scripts/gem_limits.rb" --target <target>`. It reads only the lockfile (no network, no next_rails) and lists the locked gems whose gemspec excludes the target. Each one lands in required bumps or blockers; the check below says which, and the version to bump to.
 
 ---
 
@@ -109,6 +109,8 @@ curl -sS -X POST https://api.railsbump.org/lockfiles \
 ```
 
 The lockfile content must be JSON-escaped — the `jq -Rs` filter does that. Mirrors `bin/api_check_lockfile` in the railsbump repo.
+
+`curl` and `jq` are examples, not required tools. An available HTTP operation and JSON encoder may send the same POST body and read the same status and fields. If none is available or network permission is missing, record the secondary check as unavailable. Do not hand-escape the lockfile or treat a failed request as compatible.
 
 **202 Accepted** response shape:
 

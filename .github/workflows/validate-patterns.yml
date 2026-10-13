@@ -8,6 +8,14 @@ on:
       - "rails-upgrade/detection-scripts/patterns/*.yml"
       - "rails-upgrade/detection-scripts/*.rb"
       - "upgrade-cleanup/**/*.md"
+      - "upgrade-cleanup/.claude-plugin/plugin.json"
+      - ".claude-plugin/plugin.json"
+      - ".agents/plugins/marketplace.json"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "README.md"
+      - "docs/harness-compatibility.md"
+      - "bin/test-harness-compatibility"
       - "bin/validate-patterns"
       - "bin/test-patterns"
       - "bin/lint-skill"
@@ -18,6 +26,14 @@ on:
       - "rails-upgrade/detection-scripts/patterns/*.yml"
       - "rails-upgrade/detection-scripts/*.rb"
       - "upgrade-cleanup/**/*.md"
+      - "upgrade-cleanup/.claude-plugin/plugin.json"
+      - ".claude-plugin/plugin.json"
+      - ".agents/plugins/marketplace.json"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "README.md"
+      - "docs/harness-compatibility.md"
+      - "bin/test-harness-compatibility"
       - "bin/validate-patterns"
       - "bin/test-patterns"
       - "bin/lint-skill"
@@ -41,3 +57,4 @@ jobs:
       - run: ruby bin/lint-skill
       - run: ruby rails-upgrade/detection-scripts/scan_patterns.rb --self-test
       - run: ruby rails-upgrade/detection-scripts/gem_limits.rb --self-test
+      - run: ruby bin/test-harness-compatibility

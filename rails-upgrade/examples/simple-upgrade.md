@@ -4,13 +4,15 @@
 
 ---
 
+These examples illustrate reports. Follow the selected workflows and their gates for execution.
+
 ## User Request
 
 "I want to upgrade my Rails app from 7.1 to 7.2"
 
 ---
 
-### Claude Response
+### Assistant Response
 
 I'll help you upgrade from Rails 7.1 to 7.2. Let me find any breaking changes in your codebase.
 
