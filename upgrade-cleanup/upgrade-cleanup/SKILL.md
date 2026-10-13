@@ -17,6 +17,7 @@ These instructions apply in both Codex and Claude Code. Use the active harness's
 - **App directory:** the intended Rails application's directory, containing its `Gemfile`. Establish it before reading app files or changing them. If the request leaves the app ambiguous, ask the user and wait. Run every Bundler, Rails, test, Git, Docker Compose, and cleanup command with this directory as its explicit working directory. Resolve app paths from this directory, not the skill directory.
 - **Questions and approvals:** use a native question tool when available, otherwise ask in ordinary chat and wait for the answer. An unavailable tool, timeout, or missing answer is not approval. Keep direction, environment, pre-flight override, and destructive-step confirmation gates from the workflow.
 - **Command results:** wait for each command to finish, inspect its exit status and output, and apply the workflow's stop conditions. An asynchronous command must be resumed or polled until it completes. Report unavailable validation as unverified; do not treat missing tooling or permissions as success.
+- **Scope and resume:** preserve the user's granted permissions and unrelated work. Loading this skill does not expand permission to commit, push, publish or deploy. On resume, confirm the app, kept direction, changed files, validation state and pending answers before continuing. If an instruction contradicts a gate or the granted scope, report the conflict and stop that action until it is resolved.
 
 ## When to Run
 

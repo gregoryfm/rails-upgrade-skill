@@ -1,0 +1,203 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks installed resources and script execution, without a model or network.
+# This is packaging/static evidence, not proof of either harness's model behaviour.
+
+require "fileutils"
+require "json"
+require "open3"
+require "rbconfig"
+require "tmpdir"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+SOURCES = {
+  "rails-upgrade" => File.join(ROOT, "rails-upgrade"),
+  "upgrade-cleanup" => File.join(ROOT, "upgrade-cleanup", "upgrade-cleanup")
+}.freeze
+
+def check(description)
+  raise description unless yield
+
+  puts "OK   #{description}"
+end
+
+def tree(path)
+  Dir.glob(File.join(path, "**", "*"), File::FNM_DOTMATCH).sort.each_with_object({}) do |file, files|
+    files[file.delete_prefix("#{path}/")] = File.binread(file) if File.file?(file)
+  end
+end
+
+def write(path, content)
+  FileUtils.mkdir_p(File.dirname(path))
+  File.write(path, content)
+end
+
+def copy_skill(source, destination)
+  FileUtils.mkdir_p(File.dirname(destination))
+  FileUtils.cp_r(source, destination)
+end
+
+def run_script(skill, script, app, *arguments)
+  Open3.capture3(RbConfig.ruby, File.join(skill, "detection-scripts", script), *arguments, chdir: app)
+end
+
+def scan(skill, app, *arguments)
+  stdout, stderr, status = run_script(skill, "scan_patterns.rb", app, "--format", "json", *arguments)
+  raise "scan failed: #{stderr}" unless status.success?
+
+  JSON.parse(stdout)
+end
+
+def fails_with(skill, script, app, message, *arguments)
+  stdout, stderr, status = run_script(skill, script, app, *arguments)
+  !status.success? && stdout.empty? && stderr.include?(message)
+end
+
+# Catch executable native-tool examples, not ordinary Ruby variables or prose.
+def native_schema_lines(text)
+  text.lines.each_with_index.filter_map do |line, index|
+    index + 1 if line.match?(/^\s*(?:["']?(?:file_path|output_mode)["']?\s*:|(?:Read|Grep|Glob|Bash|Edit|Write|Skill|Task|AskUserQuestion)\s*:)/)
+  end
+end
+
+begin
+  Dir.mktmpdir("rails harness compatibility ") do |temporary|
+    temporary = File.realpath(temporary)
+    app = File.join(temporary, "Rails app with spaces")
+    write(File.join(app, "Gemfile"), "source 'https://rubygems.org'\ngem 'rails', '4.0.13'\ngem 'legacy_cap'\n")
+    lock = <<~LOCK
+      GEM
+        remote: https://rubygems.org/
+        specs:
+          legacy_cap (1.0.0)
+            actionpack (< 4.1)
+          rails (4.0.13)
+
+      PLATFORMS
+        ruby
+
+      DEPENDENCIES
+        legacy_cap
+        rails (= 4.0.13)
+    LOCK
+    write(File.join(app, "Gemfile.lock"), lock)
+    write(File.join(app, "app/models/user.rb"), "class User < ActiveRecord::Base\n  def self.active\n    find_all_by_active(true)\n  end\nend\n")
+
+    installs = {}
+    %w[.agents .claude].each do |harness|
+      installs[harness] = SOURCES.to_h do |name, source|
+        destination = File.join(app, harness, "skills", name)
+        copy_skill(source, destination)
+        [name, destination]
+      end
+    end
+
+    installs["Claude plugins"] = SOURCES.to_h do |name, source|
+      plugin_source = name == "rails-upgrade" ? ROOT : File.join(ROOT, "upgrade-cleanup")
+      manifest_path = File.join(plugin_source, ".claude-plugin/plugin.json")
+      manifest = JSON.parse(File.read(manifest_path))
+      relative_skill = manifest.fetch("skills")
+      check("#{name} manifest resolves to canonical skill") do
+        File.realpath(File.expand_path(relative_skill, plugin_source)) == File.realpath(source)
+      end
+      plugin = File.join(temporary, "Claude plugins with spaces", name)
+      write(File.join(plugin, ".claude-plugin/plugin.json"), File.read(manifest_path))
+      destination = File.expand_path(relative_skill, plugin)
+      raise "plugin skill escapes its root" unless destination.start_with?("#{plugin}/")
+
+      copy_skill(source, destination)
+      [name, destination]
+    end
+
+    check("static schema check catches tool calls but allows a Ruby file_path variable") do
+      native_schema_lines("Read: {file_path: 'x'}\n  \"output_mode\": \"content\"\n").length == 2 &&
+        native_schema_lines("Rack::Test::UploadedFile.new(file_path, 'image/png')\n").empty?
+    end
+
+    installs.each do |label, skills|
+      skills.each do |name, skill|
+        check("#{label}: #{name} installed resource bytes match source") { tree(skill) == tree(SOURCES.fetch(name)) }
+        document = File.read(File.join(skill, "SKILL.md"))
+        frontmatter = YAML.safe_load(document[/\A---\n(.*?)\n---/m, 1])
+        check("#{label}: #{name} name and description parse") do
+          frontmatter.fetch("name") == name && frontmatter.fetch("description").is_a?(String) &&
+            !frontmatter.fetch("description").empty?
+        end
+        risks = Dir.glob(File.join(skill, "**/*.md")).flat_map do |file|
+          native_schema_lines(File.read(file)).map { |line| "#{file}:#{line}" }
+        end
+        raise "#{label}: native tool schemas at #{risks.join(', ')}" unless risks.empty?
+        check("#{label}: #{name} has no hardcoded native tool schemas") { risks.empty? }
+      end
+      cleanup = skills.fetch("upgrade-cleanup")
+      check("#{label}: cleanup workflow resolves from installed skill") do
+        File.read(File.join(cleanup, "SKILL.md")).include?("workflows/upgrade-cleanup-workflow.md") &&
+          File.binread(File.join(cleanup, "workflows/upgrade-cleanup-workflow.md")) ==
+            File.binread(File.join(SOURCES.fetch("upgrade-cleanup"), "workflows/upgrade-cleanup-workflow.md"))
+      end
+    end
+
+    app_before = tree(app)
+    installed_before = installs.transform_values { |skills| skills.transform_values { |skill| tree(skill) } }
+    scans = []
+    gem_reports = []
+    installs.each do |label, skills|
+      skill = skills.fetch("rails-upgrade")
+      result = scan(skill, app, "--root", app)
+      scans << result
+      check("#{label}: default scan routes 4.0 -> 4.1 and finds dynamic finder") do
+        finding = result.fetch("findings").find { |item| item["variable_name"] == "DYNAMIC_FINDERS" }
+        result.values_at("from", "to") == %w[4.0 4.1] && finding &&
+          finding.fetch("sites").any? { |site| site.values_at("file", "line") == ["app/models/user.rb", 3] }
+      end
+      stdout, stderr, status = run_script(skill, "gem_limits.rb", app, "--root", app)
+      check("#{label}: gem limits reports custom cap below 4.1") do
+        status.success? && stderr.empty? && stdout.include?("Rails 4.0 -> 4.1") &&
+          stdout.include?("| legacy_cap | 1.0.0 | gem | actionpack < 4.1 | yes |")
+      end
+      gem_reports << stdout
+      explicit = scan(skill, app, "--target", "7.0")
+      check("#{label}: explicit later target scans its own 6.1 -> 7.0 hop") do
+        explicit.values_at("from", "to") == %w[6.1 7.0]
+      end
+    end
+    check("scan JSON and gem reports agree across three installation layouts") do
+      scans.uniq.length == 1 && gem_reports.uniq.length == 1
+    end
+    check("read-only scans leave the full fixture byte tree unchanged") { tree(app) == app_before }
+
+    installs.each do |label, skills|
+      skill = skills.fetch("rails-upgrade")
+      relative_output = File.join("tmp", "#{label.delete(' .')}-scan.json")
+      stdout, stderr, status = run_script(skill, "scan_patterns.rb", app, "--format", "json", "--output", relative_output)
+      check("#{label}: --output writes the same JSON under app tmp") do
+        status.success? && stdout.empty? && stderr.include?(File.join(app, relative_output)) &&
+          JSON.parse(File.read(File.join(app, relative_output))) == scans.first
+      end
+
+      missing_lock = File.join(temporary, "app without lock")
+      FileUtils.mkdir_p(missing_lock)
+      check("#{label}: missing lock fails auto scan and gem limits") do
+        fails_with(skill, "scan_patterns.rb", missing_lock, "no rails or railties") &&
+          fails_with(skill, "gem_limits.rb", missing_lock, "not found")
+      end
+      no_patterns = File.join(temporary, "Rails 6 app without patterns")
+      write(File.join(no_patterns, "Gemfile.lock"), lock.sub("rails (4.0.13)", "rails (6.0.6)"))
+      check("#{label}: 6.0 -> 6.1 missing patterns returns an error") do
+        fails_with(skill, "scan_patterns.rb", no_patterns, "has no patterns file")
+      end
+      check("#{label}: unsupported target with no guide returns an error") do
+        fails_with(skill, "scan_patterns.rb", app, "no version guide ends", "--target", "9.9")
+      end
+    end
+    check("scripts and output leave all installed resource bytes unchanged") do
+      installs.transform_values { |skills| skills.transform_values { |skill| tree(skill) } } == installed_before
+    end
+  end
+  puts "PASS packaging, static instructions and bundled scripts; model/harness execution was not tested."
+rescue StandardError => e
+  warn "FAIL #{e.message}"
+  exit 1
+end

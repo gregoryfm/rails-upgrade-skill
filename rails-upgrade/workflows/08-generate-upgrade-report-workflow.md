@@ -99,7 +99,7 @@ For each finding, check whether the app has code that interacts with the change:
 | `{PATTERNS_NOT_SCANNED}` / `{PATTERNS_ALL_SUPPRESSED}` | JSON `summary.unscanned` / `summary.suppressed`, as pattern names with what was done about each, or `none` | `CACHE_DIGESTS_BACKPORT (no Gemfile.lock; checked by hand, absent)` |
 | `{MANUAL_CHECKS}` | the app's own features, from routes, mailers, jobs | `sign in, advisory search, RSS feed` |
 
-No effort or risk estimates: they are subjective and the repo does not publish them (see `CLAUDE.md`, version guides rule).
+No effort or risk estimates: they are subjective and the repo does not publish them.
 
 ## Step 8: Quality check
 
